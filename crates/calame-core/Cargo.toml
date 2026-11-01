@@ -1,0 +1,16 @@
+﻿[package]
+name = "calame-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[lints]
+workspace = true

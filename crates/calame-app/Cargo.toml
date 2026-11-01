@@ -1,0 +1,20 @@
+[package]
+name = "calame-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+calame-core = { path = "../calame-core" }
+calame-input = { path = "../calame-input" }
+eframe = "0.37"
+anyhow = "1"
+egui = "0.37"
+
+[lints]
+workspace = true
+
+
