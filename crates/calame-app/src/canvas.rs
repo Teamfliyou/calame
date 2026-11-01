@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
+use calame_core::background::{EXPORT_MARGIN, PAGE_HEIGHT, PAGE_WIDTH};
 use calame_core::{
     snap, Background, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item,
     Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox, UNITS_PER_MM,
@@ -14,6 +15,7 @@ use uuid::Uuid;
 
 use crate::instruments_ui;
 use crate::render_cache::{RenderCache, SMOOTHING};
+use crate::theme;
 use crate::tools::{Tool, ToolSettings};
 
 /// Vue sur la page infinie : `offset` est le point de page affiché au coin haut-gauche.
@@ -156,6 +158,10 @@ pub struct Canvas {
     render_cache: RenderCache,
     /// Dernière forme reconnue, affichée un instant pour indiquer comment l'annuler.
     notice: Option<(ShapeKind, Instant)>,
+    /// Faux tant que la page n'a pas été centrée dans la zone visible.
+    centered: bool,
+    /// Zone du canevas à l'écran lors de la dernière image.
+    last_rect: Rect,
 }
 
 impl Default for Canvas {
@@ -171,10 +177,18 @@ impl Default for Canvas {
             viewport_center: Point2::default(),
             render_cache: RenderCache::default(),
             notice: None,
+            centered: false,
+            last_rect: Rect::NOTHING,
         }
     }
 }
 
+/// Espace laissé au-dessus de la page centrée, en pixels.
+const TOP_MARGIN: f32 = 28.0;
+/// Largeur maximale de la page à l'écran au centrage, en pixels.
+const PAGE_MAX_PX: f32 = 840.0;
+/// Pas des points du bureau, en pixels à l'écran au zoom 1.
+const DESK_STEP: f32 = 22.0;
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 8.0;
 /// Rayon de capture des poignées de la sélection, en pixels d'écran.
@@ -194,9 +208,78 @@ fn color32(c: Color) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
 }
 
+/// Couleur d'affichage d'une encre : éclaircie sur le papier sombre.
+fn ink(c: Color, dark: bool) -> Color32 {
+    theme::display_ink(color32(c), dark)
+}
+
 impl Canvas {
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
+    }
+
+    /// Zone du canevas à l'écran lors de la dernière image.
+    pub fn rect(&self) -> Rect {
+        self.last_rect
+    }
+
+    /// Recentre la page à la prochaine image, à un zoom qui la montre sur toute sa largeur.
+    pub fn recenter(&mut self) {
+        self.centered = false;
+    }
+
+    /// Zoom (ou dézoom) autour du centre de la zone visible.
+    pub fn zoom_by(&mut self, factor: f32) {
+        let rect = self.last_rect;
+        if !rect.is_positive() {
+            return;
+        }
+        let center = rect.center();
+        let before = self.view.to_page(rect.min, center);
+        self.view.zoom = (self.view.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        let after = self.view.to_page(rect.min, center);
+        self.view.offset += Vec2::new(before.x - after.x, before.y - after.y);
+    }
+
+    /// Zone de la sélection à l'écran, pour y poser la barre d'actions (rien pendant un geste).
+    pub fn selection_screen_rect(&self, page: &Page) -> Option<Rect> {
+        if !matches!(self.gesture, Gesture::None) {
+            return None;
+        }
+        let bounds = self.selection_bounds(page, None)?;
+        let origin = self.last_rect.min;
+        Some(Rect::from_min_max(
+            self.view.to_screen(origin, bounds.min),
+            self.view.to_screen(origin, bounds.max),
+        ))
+    }
+
+    /// Duplique la sélection (décalée) et sélectionne la copie.
+    pub fn duplicate_selection(&mut self, page: &mut Page, history: &mut History) {
+        let items = self.selected_items(page);
+        if !items.is_empty() {
+            self.paste(page, history, &items);
+        }
+    }
+
+    /// Remplace chaque trait sélectionné par la forme qu'il évoque (droite, cercle, rectangle…).
+    /// Renvoie le nombre de traits redressés.
+    pub fn straighten_selection(&mut self, page: &mut Page, history: &mut History) -> usize {
+        let mut replacements = HashMap::new();
+        for item in self.selected_items(page) {
+            if let Item::Stroke(stroke) = &item {
+                if let Some(shape) = recognize_stroke(stroke, false) {
+                    self.selection.remove(&stroke.id);
+                    self.selection.insert(shape.stroke.id);
+                    replacements.insert(stroke.id, vec![Item::Stroke(shape.stroke)]);
+                }
+            }
+        }
+        let count = replacements.len();
+        if count > 0 {
+            history.replace_items(page, replacements);
+        }
+        count
     }
 
     /// Informe le canevas d'un changement d'outil voulu par l'application : la sélection est conservée.
@@ -290,6 +373,10 @@ impl Canvas {
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         let origin = rect.min;
+        self.last_rect = rect;
+        if !self.centered {
+            self.center_page(rect, backdrop);
+        }
 
         self.navigate(ui, &response, origin);
         self.viewport_center = self.view.to_page(origin, rect.center());
@@ -322,6 +409,37 @@ impl Canvas {
                 _ => egui::CursorIcon::Crosshair,
             });
         }
+    }
+
+    /// Centre la page horizontalement, en haut de la zone, au plus 840 pixels de large.
+    fn center_page(&mut self, rect: Rect, backdrop: &Backdrop) {
+        let width = backdrop
+            .image
+            .map_or(PAGE_WIDTH, |(_, size)| size.x.max(1.0));
+        let zoom = ((rect.width() - 48.0).min(PAGE_MAX_PX) / width).clamp(MIN_ZOOM, 1.0);
+        self.view.zoom = zoom;
+        self.view.offset = Vec2::new(
+            width / 2.0 - rect.width() / (2.0 * zoom),
+            -TOP_MARGIN / zoom,
+        );
+        self.centered = true;
+    }
+
+    /// Papier sous le contenu : la page A4 (ou l'image de fond), agrandie au contenu comme à
+    /// l'export. Les rectangles englobants viennent du cache de rendu.
+    fn paper_area(&self, page: &Page, backdrop: &Backdrop) -> Rect2 {
+        let (width, height) = backdrop
+            .image
+            .map_or((PAGE_WIDTH, PAGE_HEIGHT), |(_, size)| (size.x, size.y));
+        let base = Rect2 {
+            min: Point2::new(0.0, 0.0),
+            max: Point2::new(width, height),
+        };
+        page.items
+            .iter()
+            .filter_map(|item| self.render_cache.bounds(item))
+            .reduce(Rect2::union)
+            .map_or(base, |content| base.union(content.expand(EXPORT_MARGIN)))
     }
 
     /// Reconnaît la forme d'un trait quand le stylet reste immobile, trait posé.
@@ -394,7 +512,11 @@ impl Canvas {
                 } => {
                     let pressure = force.map_or(0.5, |f| f.clamp(0.0, 1.0));
                     match phase {
-                        egui::TouchPhase::Start if rect.contains(pos) => {
+                        // Pas sous le dock, la bulle ou la barre de sélection posés sur la page.
+                        egui::TouchPhase::Start
+                            if rect.contains(pos)
+                                && ui.ctx().layer_id_at(pos) == Some(ui.layer_id()) =>
+                        {
                             Event::Down(Source::Touch, pos, pressure)
                         }
                         egui::TouchPhase::Start => continue,
@@ -815,7 +937,7 @@ impl Canvas {
         };
         let screen = view.to_screen(origin, edit.pos);
         let font = FontId::proportional((edit.font_size * view.zoom).max(6.0));
-        let color = color32(edit.color);
+        let color = ink(edit.color, ui.visuals().dark_mode);
         let mut finished = false;
         egui::Area::new(egui::Id::unique("calame-text-edit"))
             .fixed_pos(screen)
@@ -864,8 +986,16 @@ impl Canvas {
     ) {
         let painter = cx.painter;
         let (view, origin) = (self.view, rect.min);
-        painter.rect_filled(rect, 0.0, Color32::WHITE);
-        draw_backdrop(painter, rect, view, backdrop);
+        let dark = ui.visuals().dark_mode;
+        draw_desk(painter, rect, view, dark);
+        draw_paper(
+            painter,
+            rect,
+            view,
+            self.paper_area(cx.page, backdrop),
+            backdrop,
+            dark,
+        );
 
         let transform = match &self.gesture {
             Gesture::Transform { current, .. } => Some(*current),
@@ -886,7 +1016,7 @@ impl Canvas {
             if let Gesture::EraseArea { pieces, .. } = &self.gesture {
                 if let Some(list) = pieces.get(&id) {
                     for s in list {
-                        paint_stroke(painter, s, &s.smoothed(SMOOTHING), view, origin, 1.0);
+                        paint_stroke(painter, s, &s.smoothed(SMOOTHING), view, origin, 1.0, dark);
                     }
                     continue;
                 }
@@ -902,13 +1032,13 @@ impl Canvas {
                 (None, Item::Stroke(s)) => {
                     let cached = self.render_cache.get(s);
                     if cached.bounds.is_some_and(|b| b.intersects(visible)) {
-                        paint_stroke(painter, s, &cached.smoothed, view, origin, opacity);
+                        paint_stroke(painter, s, &cached.smoothed, view, origin, opacity, dark);
                     }
                 }
                 _ => {
                     let shown = moved.as_ref().unwrap_or(item);
                     if shown.bounds().map_or(true, |b| b.intersects(visible)) {
-                        paint_item(painter, shown, view, origin, opacity);
+                        paint_item(painter, shown, view, origin, opacity, dark);
                     }
                 }
             }
@@ -933,7 +1063,7 @@ impl Canvas {
                     painter.circle_stroke(
                         to_screen(edge.project(p)),
                         6.0,
-                        egui::Stroke::new(2.0, Color32::from_rgb(240, 150, 40)),
+                        egui::Stroke::new(2.0, theme::SAFFRON),
                     );
                 }
             }
@@ -944,7 +1074,7 @@ impl Canvas {
                 stroke, snapped, ..
             } => {
                 let shown = snapped.as_ref().map_or(stroke, |s| &s.stroke);
-                paint_stroke(painter, shown, &shown.smoothed(6), view, origin, 1.0);
+                paint_stroke(painter, shown, &shown.smoothed(6), view, origin, 1.0, dark);
             }
             Gesture::Lasso { points, .. } => {
                 let line: Vec<Pos2> = points.iter().map(|p| view.to_screen(origin, *p)).collect();
@@ -959,7 +1089,7 @@ impl Canvas {
                 painter.circle_stroke(
                     hover,
                     cx.tools.eraser_size * 0.5 * view.zoom,
-                    egui::Stroke::new(1.5, Color32::from_gray(110)),
+                    egui::Stroke::new(1.5, theme::label_secondary(dark)),
                 );
             }
         }
@@ -980,13 +1110,18 @@ impl Canvas {
             crate::i18n::t(shape_label_key(kind)),
             crate::i18n::t("shape-undo-hint")
         );
-        let galley = painter.layout_no_wrap(text, FontId::proportional(14.0), Color32::WHITE);
-        let area = Rect::from_min_size(
-            rect.min + Vec2::new(14.0, 14.0),
-            galley.size() + Vec2::splat(16.0),
+        let galley = painter.layout_no_wrap(
+            text,
+            theme::font(13.0, theme::Weight::Medium),
+            Color32::WHITE,
         );
-        painter.rect_filled(area, 6.0, Color32::from_rgba_unmultiplied(30, 30, 40, 220));
-        painter.galley(area.min + Vec2::splat(8.0), galley, Color32::WHITE);
+        let size = galley.size() + Vec2::new(24.0, 16.0);
+        let area = Rect::from_min_size(
+            egui::pos2(rect.center().x - size.x / 2.0, rect.min.y + 16.0),
+            size,
+        );
+        painter.rect_filled(area, 10.0, theme::INK_BUTTON.gamma_multiply(0.94));
+        painter.galley(area.min + Vec2::new(12.0, 8.0), galley, Color32::WHITE);
     }
 
     fn paint_selection(
@@ -1001,16 +1136,23 @@ impl Canvas {
         let Some(bounds) = self.selection_bounds(page, transform) else {
             return;
         };
-        let stroke = ui.visuals().selection.stroke;
+        // Cadre en pointillés d'accent, poignées carrées blanches de 9 pixels.
+        let accent = theme::accent(ui.visuals().dark_mode);
+        let stroke = egui::Stroke::new(1.5, accent);
         let min = view.to_screen(origin, bounds.min);
         let max = view.to_screen(origin, bounds.max);
-        painter.rect_stroke(
-            Rect::from_min_max(min, max),
-            0.0,
-            stroke,
-            egui::StrokeKind::Outside,
+        let frame = Rect::from_min_max(min, max);
+        painter.rect_filled(
+            frame,
+            6.0,
+            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 10),
         );
-        let fill = ui.visuals().extreme_bg_color;
+        let mut outline = crate::widgets::rounded_rect_points(frame, egui::CornerRadius::same(6));
+        if let Some(first) = outline.first().copied() {
+            outline.push(first);
+        }
+        painter.extend(Shape::dashed_line(&outline, stroke, 5.0, 4.0));
+        let fill = Color32::WHITE;
         for corner in corners_of(bounds) {
             let c = view.to_screen(origin, corner);
             painter.rect_filled(Rect::from_center_size(c, Vec2::splat(9.0)), 2.0, fill);
@@ -1120,15 +1262,75 @@ pub struct Backdrop {
     pub image: Option<(egui::TextureId, Vec2)>,
 }
 
-fn draw_backdrop(painter: &Painter, rect: Rect, view: View, backdrop: &Backdrop) {
+/// Bureau autour de la page : un gris bleuté semé de points, qui suivent le défilement.
+fn draw_desk(painter: &Painter, rect: Rect, view: View, dark: bool) {
+    painter.rect_filled(rect, 0.0, theme::desk(dark));
+    let step = DESK_STEP * view.zoom.sqrt().clamp(0.6, 1.6);
+    if step < 8.0 {
+        return;
+    }
+    let dot = theme::desk_dots(dark);
+    let shift = view.offset * view.zoom;
+    let start_x = rect.left() - shift.x.rem_euclid(step);
+    let start_y = rect.top() - shift.y.rem_euclid(step);
+    let mut y = start_y;
+    while y < rect.bottom() {
+        let mut x = start_x;
+        while x < rect.right() {
+            painter.rect_filled(
+                Rect::from_center_size(egui::pos2(x, y), Vec2::splat(2.0)),
+                1.0,
+                dot,
+            );
+            x += step;
+        }
+        y += step;
+    }
+}
+
+/// Papier : ombre portée, fond, puis l'image ou le motif choisi, limité à la feuille.
+fn draw_paper(
+    painter: &Painter,
+    rect: Rect,
+    view: View,
+    area: Rect2,
+    backdrop: &Backdrop,
+    dark: bool,
+) {
     let to_screen = |p: Point2| view.to_screen(rect.min, p);
+    let sheet = Rect::from_min_max(to_screen(area.min), to_screen(area.max));
+    painter.add(
+        egui::epaint::Shadow {
+            offset: [0, 18],
+            blur: 44,
+            spread: 0,
+            color: Color32::from_black_alpha(if dark { 150 } else { 40 }),
+        }
+        .as_shape(sheet, 4),
+    );
+    painter.rect_filled(sheet, 4.0, theme::paper(dark));
+    if dark {
+        painter.rect_stroke(
+            sheet,
+            4.0,
+            egui::Stroke::new(1.0, Color32::from_white_alpha(12)),
+            egui::StrokeKind::Outside,
+        );
+    }
+    let painter = &painter.with_clip_rect(sheet.intersect(painter.clip_rect()));
     if let Some((texture, size)) = backdrop.image {
         let image_rect = Rect::from_min_max(
             to_screen(Point2::new(0.0, 0.0)),
             to_screen(Point2::new(size.x, size.y)),
         );
         let full = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-        painter.image(texture, image_rect, full, Color32::WHITE);
+        // En sombre, l'image (page de PDF) est légèrement atténuée pour ne pas éblouir.
+        let tint = if dark {
+            Color32::from_gray(205)
+        } else {
+            Color32::WHITE
+        };
+        painter.image(texture, image_rect, full, tint);
         return;
     }
     // Un motif trop serré à l'écran n'est qu'un aplat de bruit : on ne le dessine pas.
@@ -1136,11 +1338,11 @@ fn draw_backdrop(painter: &Painter, rect: Rect, view: View, backdrop: &Backdrop)
         return;
     }
     let visible = Rect2 {
-        min: view.to_page(rect.min, rect.min),
-        max: view.to_page(rect.min, rect.max),
+        min: view.to_page(rect.min, sheet.min.max(rect.min)),
+        max: view.to_page(rect.min, sheet.max.min(rect.max)),
     };
     let pattern = backdrop.background.pattern(visible);
-    let color = color32(pattern.color);
+    let color = theme::paper_grid(dark);
     let stroke = egui::Stroke::new(1.0, color);
     for (a, b) in &pattern.lines {
         painter.line_segment([to_screen(*a), to_screen(*b)], stroke);
@@ -1151,11 +1353,11 @@ fn draw_backdrop(painter: &Painter, rect: Rect, view: View, backdrop: &Backdrop)
     }
 }
 
-fn paint_item(painter: &Painter, item: &Item, view: View, origin: Pos2, opacity: f32) {
+fn paint_item(painter: &Painter, item: &Item, view: View, origin: Pos2, opacity: f32, dark: bool) {
     match item {
-        Item::Stroke(s) => paint_stroke(painter, s, &s.smoothed(6), view, origin, opacity),
+        Item::Stroke(s) => paint_stroke(painter, s, &s.smoothed(6), view, origin, opacity, dark),
         Item::Text(t) => {
-            let color = color32(t.color).gamma_multiply(opacity);
+            let color = ink(t.color, dark).gamma_multiply(opacity);
             let galley = painter.layout(
                 t.text.clone(),
                 FontId::proportional((t.font_size * view.zoom).max(1.0)),
@@ -1177,8 +1379,9 @@ fn paint_stroke(
     view: View,
     origin: Pos2,
     opacity: f32,
+    dark: bool,
 ) {
-    let color = color32(stroke.brush.color).gamma_multiply(opacity);
+    let color = ink(stroke.brush.color, dark).gamma_multiply(opacity);
     let screen: Vec<(Pos2, f32)> = points
         .iter()
         .map(|p| {

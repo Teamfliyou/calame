@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calame — Écriture</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=Caveat:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EBEF}
+a{color:#2340C4;text-decoration:none}a:hover{color:#1A3099}
+.ib:hover{background:#EEF0F4}
+.row:hover{background:#EEF0F4}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 640px; display: flex; flex-direction: column; font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif; color: #15171C; background: #E9EBEF">
+
+<!-- Barre du haut -->
+<header style="flex: none; min-height: 56px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; box-sizing: border-box; background: #fff; border-bottom: 1px solid #E2E5EB">
+<a href="Main.dc.html" class="ib" style="height: 40px; padding: 0 12px 0 8px; border-radius: 10px; display: flex; align-items: center; gap: 4px; color: #2B2F38; font-size: 14px; font-weight: 500">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Bibliothèque</a>
+<button class="ib" aria-label="Afficher ou masquer le sommaire" onClick="{{togglePanel}}" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: #2B2F38; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9.5 4.5v15"></path></svg></button>
+<span style="width: 1px; height: 22px; background: #E2E5EB; margin: 0 4px"></span>
+<div style="flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5B616E; white-space: nowrap; overflow: hidden">
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 2px; background: #2340C4"></span>Mathématiques</span>
+<span aria-hidden="true">/</span>
+<span>Analyse — Ch. 4</span>
+<span aria-hidden="true">/</span>
+<span style="color: #15171C; font-weight: 600; overflow: hidden; text-overflow: ellipsis">Dérivées et tangentes</span>
+<span style="display: flex; align-items: center; gap: 5px; margin-left: 10px; font-size: 12px; color: #2F7A5C"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Enregistré</span>
+</div>
+<div style="display: flex; align-items: center; gap: 2px">
+<button class="ib" aria-label="Annuler (Ctrl Z)" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: #2B2F38; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+<button class="ib" aria-label="Rétablir (Ctrl Maj Z)" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: #9AA0AC; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"></path><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"></path></svg></button>
+<span style="width: 1px; height: 22px; background: #E2E5EB; margin: 0 6px"></span>
+<a href="Recherche.dc.html" class="ib" aria-label="Rechercher (Ctrl K)" style="width: 40px; height: 40px; border-radius: 10px; color: #2B2F38; display: flex; align-items: center; justify-content: center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.3-4.3"></path></svg></a>
+<a href="Concentration.dc.html" class="ib" aria-label="Mode concentration (F11)" style="width: 40px; height: 40px; border-radius: 10px; color: #2B2F38; display: flex; align-items: center; justify-content: center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></a>
+<button style="height: 38px; margin-left: 6px; padding: 0 16px; border-radius: 10px; border: 0; background: #15171C; color: #fff; font: inherit; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v5.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V14"></path></svg>Exporter</button>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex">
+
+<!-- Sommaire -->
+<sc-if value="{{panel}}" hint-placeholder-val="{{ true }}">
+<aside style="flex: 0 0 248px; display: flex; flex-direction: column; background: #FAFBFC; border-right: 1px solid #E2E5EB; min-height: 0">
+<div style="padding: 12px; display: flex; gap: 4px">
+<div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border-radius: 10px; background: #EDEFF3">
+<button style="height: 32px; border: 0; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.08); font: inherit; font-size: 13px; font-weight: 600; color: #15171C; cursor: pointer">Pages</button>
+<button style="height: 32px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; color: #5B616E; cursor: pointer">Aperçu</button>
+</div>
+</div>
+<div style="flex: 1; min-height: 0; overflow: auto; padding: 0 8px; display: flex; flex-direction: column; gap: 2px">
+<button class="row" style="height: 36px; border: 0; background: transparent; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font: inherit; font-size: 13px; color: #2B2F38; cursor: pointer; text-align: left">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"></path></svg>
+<span style="flex: 1">Limites</span><span style="font-size: 12px; color: #5B616E">9</span></button>
+<button class="row" style="height: 36px; border: 0; background: transparent; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font: inherit; font-size: 13px; font-weight: 600; color: #15171C; cursor: pointer; text-align: left">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2340C4" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"></path></svg>
+<span style="flex: 1">Dérivées</span><span style="font-size: 12px; color: #5B616E; font-weight: 400">5</span></button>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px 22px">
+<sc-for list="{{pages}}" as="p" hint-placeholder-count="5">
+<button class="row" style="border: 0; border-radius: 10px; display: flex; align-items: center; gap: 12px; padding: 6px 8px; font: inherit; cursor: pointer; text-align: left; {{p.rowStyle}}">
+<span style="width: 46px; height: 60px; flex: none; border-radius: 5px; background-color: #FFFEFB; background-image: linear-gradient(#EEF0F5 1px, transparent 1px), linear-gradient(90deg, #EEF0F5 1px, transparent 1px); background-size: 6px 6px; box-sizing: border-box; padding: 6px 5px; display: flex; flex-direction: column; gap: 4px; {{p.thumbStyle}}">
+<span style="height: 3px; width: 70%; border-radius: 2px; background: #2340C4"></span>
+<span style="height: 2px; width: 90%; border-radius: 2px; background: #9AA6CF"></span>
+<span style="height: 2px; width: 60%; border-radius: 2px; background: #9AA6CF"></span>
+</span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 13px; font-weight: 500; color: #15171C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.title}}</span>
+<span style="font-size: 12px; color: #5B616E">Page {{p.n}}</span>
+</span>
+</button>
+</sc-for>
+</div>
+<button class="row" style="height: 36px; border: 0; background: transparent; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font: inherit; font-size: 13px; color: #2B2F38; cursor: pointer; text-align: left">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"></path></svg>
+<span style="flex: 1">Primitives</span><span style="font-size: 12px; color: #5B616E">4</span></button>
+</div>
+<div style="padding: 12px; border-top: 1px solid #E2E5EB; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button style="height: 40px; border-radius: 10px; border: 1px solid #D5D9E2; background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: #15171C; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Page</button>
+<button style="height: 40px; border-radius: 10px; border: 1px solid #D5D9E2; background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: #15171C; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"></path></svg>Dossier</button>
+</div>
+</aside>
+</sc-if>
+
+<!-- Canevas -->
+<main style="flex: 1; min-width: 0; position: relative; overflow: hidden; background-color: #E9EBEF; background-image: radial-gradient(#D9DCE3 1px, transparent 1.2px); background-size: 22px 22px">
+<div style="position: absolute; left: 50%; top: 28px; transform: translateX(-50%); width: min(840px, calc(100% - 48px)); height: 1100px; box-sizing: border-box; background-color: #FFFEFB; background-image: linear-gradient(#EDF0F6 1px, transparent 1px), linear-gradient(90deg, #EDF0F6 1px, transparent 1px); background-size: 24px 24px; border-radius: 4px; box-shadow: 0 1px 2px rgba(16,24,40,.08), 0 24px 60px -30px rgba(16,24,40,.35); padding: 44px 56px; font-family: 'Caveat', cursive; color: #1B2A6B; display: flex; flex-direction: column; gap: 14px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div style="position: relative">
+<span style="position: absolute; left: -6px; right: -10px; bottom: 6px; height: 18px; border-radius: 8px; background: rgba(244,183,64,.5)"></span>
+<span style="position: relative; font-size: 50px; font-weight: 700; color: #2340C4; line-height: 1">Dérivées et tangentes</span>
+</div>
+<span style="font-size: 24px; color: #8A93A8">1 / 11</span>
+</div>
+
+<div style="font-size: 32px; font-weight: 700; color: #D2452E; margin-top: 10px">1. Nombre dérivé</div>
+<div style="font-size: 27px; line-height: 1.3">f est dérivable en a si son taux d'accroissement admet une limite finie :</div>
+
+<div style="align-self: flex-start; margin-left: 40px; padding: 14px 28px; border: 2.5px solid #2340C4; border-radius: 18px 26px 16px 24px; display: flex; align-items: center; gap: 14px; font-size: 32px; color: #2340C4; transform: rotate(-0.6deg)">
+<span>f'(a) = lim</span>
+<span style="display: flex; flex-direction: column; align-items: center; line-height: 1.05"><span>f(a+h) − f(a)</span><span style="width: 100%; height: 2.5px; background: #2340C4; border-radius: 2px"></span><span>h</span></span>
+</div>
+<div style="margin: -12px 0 0 150px; font-size: 21px; color: #2340C4">h → 0</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; margin-top: 8px">
+<div style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 32px; font-weight: 700; color: #D2452E">2. Tangente en A</div>
+<div style="font-size: 29px">y = f'(a)(x − a) + f(a)</div>
+<div style="font-size: 27px; margin-top: 10px">Exemple :</div>
+<div style="position: relative; align-self: flex-start">
+<span style="position: absolute; left: -6px; right: -6px; top: 6px; bottom: 2px; border-radius: 6px; background: rgba(244,183,64,.45)"></span>
+<span style="position: relative; font-size: 29px">f(x) = x²  →  f'(x) = 2x</span>
+</div>
+<div style="font-size: 27px">en a = 1 :  y = 2x − 1</div>
+</div>
+
+<!-- Sélection au lasso -->
+<div style="flex: 0 0 300px; position: relative; padding-top: 52px">
+<div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: #15171C; box-shadow: 0 10px 24px -10px rgba(16,24,40,.6); font-family: 'Instrument Sans', system-ui, sans-serif; white-space: nowrap">
+<button aria-label="Couleur de la sélection" style="width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="width: 16px; height: 16px; border-radius: 50%; background: #D2452E; box-shadow: 0 0 0 2px #15171C, 0 0 0 3.5px #fff"></span></button>
+<button aria-label="Dupliquer" style="width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"></path></svg></button>
+<button style="height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Redresser les formes</button>
+<span style="width: 1px; height: 20px; background: rgba(255,255,255,.2)"></span>
+<button aria-label="Supprimer" style="width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: #FF8A75; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"></path></svg></button>
+</div>
+<div style="position: relative; border: 1.5px dashed #2340C4; border-radius: 6px; padding: 8px; background: rgba(35,64,196,.04)">
+<span style="position: absolute; left: -5px; top: -5px; width: 9px; height: 9px; background: #fff; border: 1.5px solid #2340C4; border-radius: 2px"></span>
+<span style="position: absolute; right: -5px; top: -5px; width: 9px; height: 9px; background: #fff; border: 1.5px solid #2340C4; border-radius: 2px"></span>
+<span style="position: absolute; left: -5px; bottom: -5px; width: 9px; height: 9px; background: #fff; border: 1.5px solid #2340C4; border-radius: 2px"></span>
+<span style="position: absolute; right: -5px; bottom: -5px; width: 9px; height: 9px; background: #fff; border: 1.5px solid #2340C4; border-radius: 2px"></span>
+<svg width="282" height="220" viewBox="0 0 282 220" role="img" aria-label="Croquis de la parabole y = x² et de sa tangente au point A"><path d="M14 190H272M60 210V10" stroke="#1B2A6B" stroke-width="2.2" fill="none" stroke-linecap="round"></path><path d="M266 185l7 5-7 5M55 17l5-8 5 8" stroke="#1B2A6B" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M10 40C38 150 80 190 112 190S190 150 216 40" stroke="#2340C4" stroke-width="3" fill="none" stroke-linecap="round"></path><path d="M100 214L250 52" stroke="#D2452E" stroke-width="2.6" fill="none" stroke-linecap="round"></path><circle cx="177" cy="131" r="5" fill="#D2452E"></circle><text x="186" y="150" font-family="Caveat, cursive" font-size="24" fill="#D2452E">A</text><text x="222" y="40" font-family="Caveat, cursive" font-size="22" fill="#2340C4">y = x²</text></svg>
+</div>
+</div>
+</div>
+
+<div style="font-size: 32px; font-weight: 700; color: #D2452E; margin-top: 18px">3. Dérivées usuelles</div>
+</div>
+
+<!-- Dock d'outils -->
+<div style="position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 20px; background: rgba(255,255,255,.96); border: 1px solid #E2E5EB; box-shadow: 0 2px 4px rgba(16,24,40,.06), 0 20px 40px -16px rgba(16,24,40,.35); max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center">
+<div role="toolbar" aria-label="Outils" style="display: flex; gap: 2px">
+<sc-for list="{{tools}}" as="t" hint-placeholder-count="7">
+<button aria-label="{{t.label}}" title="{{t.label}}" onClick="{{t.pick}}" style="width: 44px; height: 44px; border: 0; border-radius: 13px; display: flex; align-items: center; justify-content: center; cursor: pointer; {{t.style}}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg></button>
+</sc-for>
+</div>
+<span style="width: 1px; height: 28px; background: #E2E5EB"></span>
+<div role="group" aria-label="Trousse" style="display: flex; gap: 2px">
+<sc-for list="{{pens}}" as="p" hint-placeholder-count="4">
+<button aria-label="{{p.label}}" title="{{p.label}}" onClick="{{p.pick}}" style="width: 44px; height: 44px; border: 0; border-radius: 13px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<span style="width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; {{p.ring}}"><span style="border-radius: 50%; {{p.dot}}"></span></span>
+</button>
+</sc-for>
+<button aria-label="Ajouter un stylo à la trousse" style="width: 44px; height: 44px; border: 0; border-radius: 13px; background: transparent; color: #5B616E; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+<span style="width: 1px; height: 28px; background: #E2E5EB"></span>
+<button onClick="{{toggleAuto}}" aria-pressed="{{autoShapes}}" style="height: 44px; padding: 0 14px; border: 0; border-radius: 13px; font: inherit; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; {{autoStyle}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="4.5"></circle><path d="M13 13h7.5v7.5H13z"></path></svg>Formes auto</button>
+</div>
+
+<!-- Zoom -->
+<div style="position: absolute; right: 16px; bottom: 26px; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,.96); border: 1px solid #E2E5EB; font-size: 13px; font-weight: 500">
+<button class="ib" aria-label="Dézoomer" style="width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #2B2F38; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg></button>
+<span style="min-width: 46px; text-align: center">100 %</span>
+<button class="ib" aria-label="Zoomer" style="width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #2B2F38; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tool: 'pen', pen: 0, panel: true, auto: true }; }
+  renderVals() {
+    const s = this.state;
+    const toolDefs = [
+      { id: 'pen', label: 'Stylo (P)', d: 'M4 20l1.2-4.4L16 4.8l3.2 3.2L8.4 18.8z M14 7l3 3' },
+      { id: 'hl', label: 'Surligneur (H)', d: 'M8 13.5l7.8-8.8 4.2 3.6-8 8.6z M8 13.5L6 19l2.5 1 3.5-3.7 M3.5 21h6' },
+      { id: 'eraser', label: 'Gomme (E)', d: 'M4.5 15.5l9-9.4a1.5 1.5 0 0 1 2.1 0l3.3 3.3a1.5 1.5 0 0 1 0 2.1l-7 7H7.4z M9.5 10.5l5 5 M12 18.5h8' },
+      { id: 'lasso', label: 'Lasso (L)', d: 'M12 4.5c4.6 0 8 2.3 8 5.2s-3.4 5.3-8 5.3-8-2.4-8-5.3 3.4-5.2 8-5.2z M7.6 14.3c-1.7 1.3-1.5 3.6.4 4.3 1.3.5 1.7 1.5 1.1 2.6' },
+      { id: 'text', label: 'Texte (T)', d: 'M5 7V5h14v2 M12 5v14 M9 19h6' },
+      { id: 'image', label: 'Image', d: 'M4 5.5h16v13H4z M4 15.5l4.5-4.5 4 4 2.5-2.5 5 5 M15.5 9.5h.01' },
+      { id: 'ruler', label: 'Règle et instruments (R)', d: 'M3.5 16.5L16.5 3.5l4 4-13 13z M7.5 12.5l2 2 M10.5 9.5l2 2 M13.5 6.5l2 2' }
+    ];
+    const tools = toolDefs.map((t) => ({ ...t,
+      style: t.id === s.tool ? 'background:#15171C;color:#fff;' : 'background:transparent;color:#2B2F38;',
+      pick: () => this.setState({ tool: t.id }) }));
+    const penDefs = [
+      { label: 'Encre bleue, fine', c: '#2340C4', w: 7 },
+      { label: 'Rouge, moyen', c: '#D2452E', w: 10 },
+      { label: 'Graphite', c: '#2B2F38', w: 6 },
+      { label: 'Surligneur jaune', c: '#F4B740', w: 14 }
+    ];
+    const pens = penDefs.map((p, i) => ({ ...p,
+      ring: i === s.pen ? 'box-shadow: 0 0 0 2px #fff, 0 0 0 4px ' + p.c + ';' : 'box-shadow: inset 0 0 0 1px #E2E5EB;',
+      dot: 'width:' + p.w + 'px;height:' + p.w + 'px;background:' + p.c + ';',
+      pick: () => this.setState({ pen: i, tool: i === 3 ? 'hl' : 'pen' }) }));
+    const pages = [
+      { n: 10, title: 'Taux d’accroissement' },
+      { n: 11, title: 'Exercices 1 à 6' },
+      { n: 12, title: 'Dérivées et tangentes', active: true },
+      { n: 13, title: 'Dérivées usuelles' },
+      { n: 14, title: 'Exercices 7 à 12' }
+    ].map((p) => ({ ...p,
+      rowStyle: p.active ? 'background:#E6EAFA;' : 'background:transparent;',
+      thumbStyle: p.active ? 'box-shadow:0 0 0 2px #2340C4;' : 'box-shadow:0 0 0 1px #E2E5EB;' }));
+    return {
+      tools, pens, pages,
+      panel: s.panel,
+      togglePanel: () => this.setState({ panel: !s.panel }),
+      autoShapes: s.auto ? 'true' : 'false',
+      autoStyle: s.auto ? 'background:#FFF4DC;color:#7A4D00;' : 'background:transparent;color:#2B2F38;',
+      toggleAuto: () => this.setState({ auto: !s.auto })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calame — Mode concentration</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=Caveat:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1014}
+a{color:#AFC0FF;text-decoration:none}a:hover{color:#D3DCFF}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 640px; position: relative; overflow: hidden; font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif; color: #E7E9EF; background-color: #0F1014; background-image: radial-gradient(#1C1E25 1px, transparent 1.2px); background-size: 22px 22px">
+
+<!-- Repère discret -->
+<div style="position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.05); font-size: 13px; color: #9CA2B0; white-space: nowrap">
+<span style="width: 7px; height: 7px; border-radius: 2px; background: #7F96FF"></span>Analyse — Ch. 4 · page 12
+</div>
+<a href="Editeur.dc.html" style="position: absolute; top: 14px; right: 16px; height: 40px; padding: 0 14px; border-radius: 12px; background: rgba(255,255,255,.07); color: #E7E9EF; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 10px">Quitter la concentration
+<kbd style="font-family: inherit; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.1); color: #C9CDD6">Échap</kbd></a>
+
+<!-- Feuille sombre -->
+<div style="position: absolute; left: 50%; top: 72px; transform: translateX(-50%); width: min(880px, calc(100% - 48px)); height: 1000px; box-sizing: border-box; background-color: #17191F; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 24px 24px; border-radius: 6px; box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 40px 80px -30px rgba(0,0,0,.8); padding: 48px 60px; font-family: 'Caveat', cursive; color: #D7DCEB; display: flex; flex-direction: column; gap: 14px">
+<div style="position: relative; align-self: flex-start">
+<span style="position: absolute; left: -6px; right: -10px; bottom: 6px; height: 18px; border-radius: 8px; background: rgba(244,183,64,.28)"></span>
+<span style="position: relative; font-size: 50px; font-weight: 700; color: #9DB0FF; line-height: 1">Dérivées et tangentes</span>
+</div>
+<div style="font-size: 32px; font-weight: 700; color: #FF9A86; margin-top: 10px">1. Nombre dérivé</div>
+<div style="font-size: 27px; line-height: 1.3">f est dérivable en a si son taux d'accroissement admet une limite finie :</div>
+<div style="align-self: flex-start; margin-left: 40px; padding: 14px 28px; border: 2.5px solid #9DB0FF; border-radius: 18px 26px 16px 24px; display: flex; align-items: center; gap: 14px; font-size: 32px; color: #9DB0FF; transform: rotate(-0.6deg)">
+<span>f'(a) = lim</span>
+<span style="display: flex; flex-direction: column; align-items: center; line-height: 1.05"><span>f(a+h) − f(a)</span><span style="width: 100%; height: 2.5px; background: #9DB0FF; border-radius: 2px"></span><span>h</span></span>
+</div>
+<div style="margin: -12px 0 0 150px; font-size: 21px; color: #9DB0FF">h → 0</div>
+<div style="font-size: 32px; font-weight: 700; color: #FF9A86; margin-top: 14px">2. Tangente en A</div>
+<div style="font-size: 29px">y = f'(a)(x − a) + f(a)</div>
+<div style="display: flex; align-items: baseline; gap: 2px; font-size: 29px">
+<span>Exemple : f(x) = x²  →  f'(x) = 2x</span>
+<span style="display: inline-block; width: 2px; height: 30px; background: #9DB0FF; margin-left: 6px; transform: rotate(12deg)"></span>
+</div>
+</div>
+
+<!-- Mini dock -->
+<div role="toolbar" aria-label="Outils" style="position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 18px; background: rgba(28,30,37,.92); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 20px 40px -16px rgba(0,0,0,.7)">
+<button aria-label="Encre bleue" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 0 2px #1C1E25, 0 0 0 4px #9DB0FF; display: flex; align-items: center; justify-content: center"><span style="width: 8px; height: 8px; border-radius: 50%; background: #9DB0FF"></span></span></button>
+<button aria-label="Rouge" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="width: 10px; height: 10px; border-radius: 50%; background: #FF9A86"></span></button>
+<button aria-label="Surligneur" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="width: 14px; height: 14px; border-radius: 50%; background: #F4B740"></span></button>
+<span style="width: 1px; height: 24px; background: rgba(255,255,255,.1)"></span>
+<button aria-label="Gomme" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: #C9CDD6; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 15.5l9-9.4a1.5 1.5 0 0 1 2.1 0l3.3 3.3a1.5 1.5 0 0 1 0 2.1l-7 7H7.4z M9.5 10.5l5 5 M12 18.5h8"></path></svg></button>
+<button aria-label="Lasso" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: #C9CDD6; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5c4.6 0 8 2.3 8 5.2s-3.4 5.3-8 5.3-8-2.4-8-5.3 3.4-5.2 8-5.2z M7.6 14.3c-1.7 1.3-1.5 3.6.4 4.3 1.3.5 1.7 1.5 1.1 2.6"></path></svg></button>
+<button aria-label="Annuler" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: #C9CDD6; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -495,3 +495,17 @@ fn perf_save_and_load_a_large_page() {
         size / 1_000_000
     );
 }
+
+#[test]
+fn page_timestamps_list_saved_pages_outside_the_trash() {
+    let s = store();
+    let (_, notebook, _, page) = sample(&s);
+    assert!(s.page_timestamps().expect("dates").is_empty());
+    s.save_page(page.id, &Page::default())
+        .expect("enregistrement");
+    let stamps = s.page_timestamps().expect("dates");
+    assert_eq!(stamps.len(), 1);
+    assert!(stamps[&page.id] > 0);
+    s.trash(notebook.id).expect("corbeille");
+    assert!(s.page_timestamps().expect("dates").is_empty());
+}

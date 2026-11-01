@@ -1,7 +1,8 @@
-//! Menu Fichier, fonds de page, import et export : la partie de l'application qui touche aux
+//! Fonds de page, import et export, sauvegarde : la partie de l'application qui touche aux
 //! fichiers et aux images.
 
-use calame_core::background::PATTERN_BACKGROUNDS;
+use std::path::PathBuf;
+
 use calame_core::{Background, NodeId, NodeKind, Page};
 use calame_export::{import_image, BackgroundImage, PageBackground};
 use calame_storage::{restore_backup, ImportedPage, Store};
@@ -12,165 +13,33 @@ use crate::files::{
     ExportPage, Task, TaskResult,
 };
 use crate::i18n::t;
-use crate::toolbar::Command;
 use crate::{CalameApp, Screen};
 
-fn background_key(background: Background) -> &'static str {
-    match background {
-        Background::Blank => "bg-blank",
-        Background::GridSmall => "bg-grid-small",
-        Background::GridLarge => "bg-grid-large",
-        Background::Lines => "bg-lines",
-        Background::Dots => "bg-dots",
-        Background::Isometric => "bg-isometric",
-        Background::Image(_) => "bg-image",
-    }
-}
-
 impl CalameApp {
-    /// Barre de menus : fichier (import, export) et fond de la page.
-    pub(crate) fn menu_bar(&mut self, ui: &mut egui::Ui) {
-        let has_page = self.current.is_some();
-        let mut export = None;
-        let mut import_pdf = false;
-        let mut backup = false;
-        let mut restore = false;
-        let mut import_image = false;
-        let mut new_background = None;
-        let mut new_dark = None;
-        let mut toggle_sidebar = false;
-        let mut reset_view = false;
-        let in_notebook = matches!(self.screen, Screen::Notebook(_));
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button(t("menu-file"), |ui| {
-                if ui.button(t("import-pdf")).clicked() {
-                    import_pdf = true;
-                    ui.close();
-                }
-                ui.add_enabled_ui(has_page, |ui| {
-                    ui.menu_button(t("export-page"), |ui| {
-                        for (format, key) in [
-                            (ExportFormat::Pdf, "export-pdf"),
-                            (ExportFormat::Png, "export-png"),
-                            (ExportFormat::Svg, "export-svg"),
-                        ] {
-                            if ui.button(t(key)).clicked() {
-                                export = Some(format);
-                                ui.close();
-                            }
-                        }
-                    });
-                });
-                ui.separator();
-                if ui.button(t("backup")).clicked() {
-                    backup = true;
-                    ui.close();
-                }
-                if ui.button(t("restore-backup")).clicked() {
-                    restore = true;
-                    ui.close();
-                }
-            });
-            ui.add_enabled_ui(has_page, |ui| {
-                ui.menu_button(t("menu-background"), |ui| {
-                    for background in PATTERN_BACKGROUNDS {
-                        let selected = self.background == background;
-                        if ui
-                            .selectable_label(selected, t(background_key(background)))
-                            .clicked()
-                        {
-                            new_background = Some(background);
-                            ui.close();
-                        }
-                    }
-                    ui.separator();
-                    let on_image = matches!(self.background, Background::Image(_));
-                    if ui.selectable_label(on_image, t("bg-pick-image")).clicked() {
-                        import_image = true;
-                        ui.close();
-                    }
-                });
-            });
-            ui.menu_button(t("menu-view"), |ui| {
-                let mut dark = self.dark;
-                if ui.checkbox(&mut dark, t("dark-theme")).changed() {
-                    new_dark = Some(dark);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(in_notebook, egui::Button::new(t("toggle-sidebar")))
-                    .clicked()
-                {
-                    toggle_sidebar = true;
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(has_page, egui::Button::new(t("reset-view")))
-                    .clicked()
-                {
-                    reset_view = true;
-                    ui.close();
-                }
-            });
-        });
-        if let Some(dark) = new_dark {
-            self.run(ui.ctx(), Command::SetDark(dark));
+    /// Où ranger un PDF importé : dans un cahier, le dossier de la page ouverte (ou le cahier) ;
+    /// dans la bibliothèque, la matière choisie, sinon la première, créée au besoin.
+    pub(crate) fn import_target(&mut self) -> Option<NodeId> {
+        if let Screen::Notebook(notebook) = self.screen {
+            let from_page = self
+                .current
+                .as_ref()
+                .and_then(|open| self.tree.get(open.id))
+                .and_then(|page| page.parent_id);
+            return Some(from_page.unwrap_or(notebook));
         }
-        if toggle_sidebar {
-            self.run(ui.ctx(), Command::ToggleSidebar);
+        if let Some(subject) = self
+            .home
+            .filter()
+            .or_else(|| self.tree.children(None).first().map(|n| n.id))
+        {
+            return Some(subject);
         }
-        if reset_view {
-            self.run(ui.ctx(), Command::ResetView);
-        }
-        if let Some(background) = new_background {
-            self.set_background(ui.ctx(), background);
-        }
-        if import_image {
-            self.pick_background_image(ui.ctx());
-        }
-        if import_pdf {
-            if let Some(target) = self.import_target() {
-                self.import_pdf(target);
-            }
-        }
-        if backup {
-            self.backup_library();
-        }
-        if restore {
-            self.restore_library(ui.ctx());
-        }
-        if let (Some(format), Some(open)) = (export, &self.current) {
-            let id = open.id;
-            self.export_node(id, format);
-        }
-    }
-
-    /// Où ranger un PDF importé depuis le menu : le conteneur de la page ouverte, sinon la
-    /// première matière.
-    fn import_target(&self) -> Option<NodeId> {
-        let from_page = self
-            .current
-            .as_ref()
-            .and_then(|open| self.tree.get(open.id))
-            .and_then(|page| page.parent_id);
-        from_page.or_else(|| self.tree.children(None).first().map(|n| n.id))
-    }
-
-    pub(crate) fn status_line(&mut self, ui: &mut egui::Ui) {
-        if let Some(task) = &self.task {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(&task.label);
-            });
-        } else if let Some(message) = self.status.clone() {
-            ui.horizontal(|ui| {
-                ui.label(message);
-                if ui.small_button(t("dismiss")).clicked() {
-                    self.status = None;
-                }
-            });
-        }
+        let created = self
+            .store
+            .create_node(None, NodeKind::Subject, t("imported-subject"));
+        let subject = self.report(created)?.id;
+        self.refresh();
+        Some(subject)
     }
 
     // ---- Fonds de page ----------------------------------------------------------------
@@ -225,7 +94,7 @@ impl CalameApp {
         }
     }
 
-    fn set_background(&mut self, ctx: &egui::Context, background: Background) {
+    pub(crate) fn set_background(&mut self, ctx: &egui::Context, background: Background) {
         let Some(id) = self.current.as_ref().map(|o| o.id) else {
             return;
         };
@@ -235,7 +104,7 @@ impl CalameApp {
         }
     }
 
-    fn pick_background_image(&mut self, ctx: &egui::Context) {
+    pub(crate) fn pick_background_image(&mut self, ctx: &egui::Context) {
         let Some(path) = rfd::FileDialog::new()
             .set_title(t("bg-pick-image"))
             .add_filter("Images", &["png", "jpg", "jpeg"])
@@ -364,7 +233,7 @@ impl CalameApp {
 
     // ---- Sauvegarde et restauration -----------------------------------------------------
 
-    fn backup_library(&mut self) {
+    pub(crate) fn backup_library(&mut self) {
         // La page ouverte doit être dans la base avant d'en prendre une copie.
         self.save_current();
         let seconds = std::time::SystemTime::now()
@@ -384,7 +253,7 @@ impl CalameApp {
         }
     }
 
-    fn restore_library(&mut self, ctx: &egui::Context) {
+    pub(crate) fn restore_library(&mut self) {
         if self.task.is_some() {
             self.error = Some(t("busy").into());
             return;
@@ -424,14 +293,13 @@ impl CalameApp {
         self.store = store;
         self.histories.clear();
         self.textures.clear();
+        self.thumbs.clear();
         self.current = None;
         self.background = Background::Blank;
         self.refresh();
         match restored {
             Ok(previous) => {
-                if let Some(first) = self.tree.first_page() {
-                    self.open_page(ctx, first);
-                }
+                self.screen = Screen::Library;
                 self.status = Some(match previous {
                     Some(old) => format!(
                         "Bibliothèque restaurée. L'ancienne est conservée : {}",
@@ -458,6 +326,15 @@ impl CalameApp {
         else {
             return;
         };
+        self.import_pdf_from(parent, path);
+    }
+
+    /// Importe le PDF `path` dans `parent` (fichier choisi, ou déposé sur la fenêtre).
+    pub(crate) fn import_pdf_from(&mut self, parent: NodeId, path: PathBuf) {
+        if self.task.is_some() {
+            self.error = Some(t("busy").into());
+            return;
+        }
         self.status = None;
         self.task = Some(Task::spawn(
             t("busy-import").into(),
@@ -503,10 +380,11 @@ impl CalameApp {
                 let result = self.store.import_document(parent, &name, &imported);
                 if let Some(root) = self.report(result) {
                     crate::library_ui::expand(ctx, parent);
+                    crate::library_ui::expand(ctx, root.id);
                     self.refresh();
                     // La première page importée s'ouvre : on peut annoter tout de suite.
                     if let Some(first) = self.tree.children(Some(root.id)).first().map(|n| n.id) {
-                        self.open_page(ctx, first);
+                        self.go_to_page(ctx, first);
                     }
                     self.status = Some(format!(
                         "{count} page{} importée{} dans « {} »",

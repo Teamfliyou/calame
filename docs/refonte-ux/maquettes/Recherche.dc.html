@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calame — Recherche et commandes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=Caveat:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#5A5F6B}
+a{color:#2340C4;text-decoration:none}
+.res:hover{background:#F1F3F8}
+input:focus{outline:none}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 96px 16px 48px; display: flex; justify-content: center; align-items: flex-start; font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif; color: #15171C; background-color: #8A8F9A; background-image: linear-gradient(rgba(21,23,28,.45), rgba(21,23,28,.45)), radial-gradient(#7B808C 1px, transparent 1.2px); background-size: auto, 22px 22px">
+
+<section role="dialog" aria-label="Recherche et commandes" style="width: 100%; max-width: 660px; border-radius: 20px; background: #fff; box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); overflow: hidden; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; gap: 12px; padding: 0 18px; height: 62px; border-bottom: 1px solid #EEF0F3">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.3-4.3"></path></svg>
+<label for="q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Rechercher une page, un cahier ou une commande</label>
+<input id="q" value="dériv" style="flex: 1; min-width: 0; height: 44px; border: 0; font: inherit; font-size: 18px; color: #15171C; background: transparent">
+<kbd style="font-family: inherit; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: #F1F2F5; border: 1px solid #E2E5EB; color: #5B616E">Échap</kbd>
+</div>
+
+<div style="display: flex; gap: 6px; padding: 12px 18px 4px; flex-wrap: wrap">
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: #15171C; color: #fff; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Tout</button>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid #E2E5EB; background: #fff; color: #2B2F38; font: inherit; font-size: 12px; cursor: pointer">Pages</button>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid #E2E5EB; background: #fff; color: #2B2F38; font: inherit; font-size: 12px; cursor: pointer">Cahiers</button>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid #E2E5EB; background: #fff; color: #2B2F38; font: inherit; font-size: 12px; cursor: pointer">Commandes</button>
+</div>
+
+<div style="padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5B616E; padding: 10px 10px 6px">Pages</span>
+<a href="Editeur.dc.html" class="res" style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 12px; background: #E6EAFA; color: #15171C">
+<span style="width: 38px; height: 48px; flex: none; border-radius: 5px; background-color: #FFFEFB; background-image: linear-gradient(#EEF0F5 1px, transparent 1px), linear-gradient(90deg, #EEF0F5 1px, transparent 1px); background-size: 5px 5px; box-shadow: 0 0 0 1px #D5DBEE; box-sizing: border-box; padding: 6px 4px; display: flex; flex-direction: column; gap: 3px"><span style="height: 3px; width: 70%; border-radius: 2px; background: #2340C4"></span><span style="height: 2px; width: 90%; border-radius: 2px; background: #9AA6CF"></span></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 500"><mark style="background: rgba(244,183,64,.5); color: inherit; border-radius: 3px; padding: 0 1px">Dériv</mark>ées et tangentes</span><span style="font-size: 12px; color: #5B616E">Mathématiques · Analyse — Ch. 4 · page 12</span></span>
+<kbd style="font-family: inherit; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: #fff; border: 1px solid #D5DBEE; color: #2340C4">Entrée</kbd>
+</a>
+<a href="Editeur.dc.html" class="res" style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 12px; color: #15171C">
+<span style="width: 38px; height: 48px; flex: none; border-radius: 5px; background-color: #FFFEFB; background-image: linear-gradient(#EEF0F5 1px, transparent 1px), linear-gradient(90deg, #EEF0F5 1px, transparent 1px); background-size: 5px 5px; box-shadow: 0 0 0 1px #E2E5EB; box-sizing: border-box; padding: 6px 4px; display: flex; flex-direction: column; gap: 3px"><span style="height: 3px; width: 60%; border-radius: 2px; background: #2340C4"></span><span style="height: 2px; width: 80%; border-radius: 2px; background: #9AA6CF"></span></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 500"><mark style="background: rgba(244,183,64,.5); color: inherit; border-radius: 3px; padding: 0 1px">Dériv</mark>ées usuelles</span><span style="font-size: 12px; color: #5B616E">Mathématiques · Analyse — Ch. 4 · page 13</span></span>
+</a>
+
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5B616E; padding: 14px 10px 6px">Dossiers</span>
+<a href="Editeur.dc.html" class="res" style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 12px; color: #15171C">
+<span style="width: 38px; height: 38px; flex: none; border-radius: 10px; background: #E6EAFA; color: #2340C4; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"></path></svg></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 500"><mark style="background: rgba(244,183,64,.5); color: inherit; border-radius: 3px; padding: 0 1px">Dériv</mark>ées</span><span style="font-size: 12px; color: #5B616E">Dans Analyse — Ch. 4 · 5 pages</span></span>
+</a>
+
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5B616E; padding: 14px 10px 6px">Commandes</span>
+<button class="res" style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border: 0; border-radius: 12px; background: transparent; font: inherit; color: #15171C; cursor: pointer; text-align: left">
+<span style="width: 38px; height: 38px; flex: none; border-radius: 10px; background: #F1F2F5; color: #2B2F38; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span>
+<span style="flex: 1; font-size: 15px">Nouvelle page dans « <mark style="background: rgba(244,183,64,.5); color: inherit; border-radius: 3px; padding: 0 1px">Dériv</mark>ées »</span>
+<kbd style="font-family: inherit; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: #F1F2F5; border: 1px solid #E2E5EB; color: #5B616E">Ctrl N</kbd>
+</button>
+<button class="res" style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border: 0; border-radius: 12px; background: transparent; font: inherit; color: #15171C; cursor: pointer; text-align: left">
+<span style="width: 38px; height: 38px; flex: none; border-radius: 10px; background: #F1F2F5; color: #2B2F38; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v5.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V14"></path></svg></span>
+<span style="flex: 1; font-size: 15px">Exporter le dossier « <mark style="background: rgba(244,183,64,.5); color: inherit; border-radius: 3px; padding: 0 1px">Dériv</mark>ées » en PDF</span>
+<kbd style="font-family: inherit; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: #F1F2F5; border: 1px solid #E2E5EB; color: #5B616E">Ctrl E</kbd>
+</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 18px; padding: 12px 20px; border-top: 1px solid #EEF0F3; background: #FAFBFC; font-size: 12px; color: #5B616E">
+<span style="display: flex; align-items: center; gap: 6px"><kbd style="font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #fff; border: 1px solid #E2E5EB">↑</kbd><kbd style="font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #fff; border: 1px solid #E2E5EB">↓</kbd>naviguer</span>
+<span style="display: flex; align-items: center; gap: 6px"><kbd style="font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #fff; border: 1px solid #E2E5EB">Entrée</kbd>ouvrir</span>
+<span style="display: flex; align-items: center; gap: 6px"><kbd style="font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #fff; border: 1px solid #E2E5EB">Ctrl Entrée</kbd>ouvrir à côté</span>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

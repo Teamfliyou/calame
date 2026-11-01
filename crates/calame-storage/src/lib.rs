@@ -2,6 +2,7 @@
 //!
 //! Le schéma est documenté dans `docs/format.md`.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -29,12 +30,12 @@ struct PageV1 {
 
 /// Couleurs proposées par défaut aux nouvelles matières, à tour de rôle.
 const SUBJECT_PALETTE: [Color; 6] = [
-    Color::rgb(66, 133, 244),
-    Color::rgb(219, 68, 55),
-    Color::rgb(15, 157, 88),
-    Color::rgb(244, 160, 0),
-    Color::rgb(171, 71, 188),
-    Color::rgb(0, 172, 193),
+    Color::rgb(0x23, 0x40, 0xC4),
+    Color::rgb(0xC2, 0x4E, 0x3A),
+    Color::rgb(0x2F, 0x7A, 0x5C),
+    Color::rgb(0xE9, 0xA9, 0x3A),
+    Color::rgb(0x7A, 0x4F, 0xC4),
+    Color::rgb(0x16, 0x76, 0x76),
 ];
 
 #[derive(Debug, Error)]
@@ -182,6 +183,24 @@ impl Store {
             &format!("SELECT {NODE_COLUMNS} FROM nodes WHERE trashed_at IS NULL"),
             [],
         )
+    }
+
+    /// Date de dernière modification (secondes Unix) de chaque page enregistrée hors corbeille.
+    /// Une page jamais écrite n'y figure pas.
+    pub fn page_timestamps(&self) -> Result<HashMap<NodeId, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT d.page_id, d.updated_at FROM page_data d
+             JOIN nodes n ON n.id = d.page_id WHERE n.trashed_at IS NULL",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (id, at) = row?;
+            if let Ok(id) = id.parse() {
+                out.insert(id, at);
+            }
+        }
+        Ok(out)
     }
 
     /// Éléments supprimés de plus haut niveau (leurs descendants les suivent), du plus récent au plus ancien.

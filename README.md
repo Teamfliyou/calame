@@ -8,19 +8,22 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 ![Icône de Calame](assets/icon.png)
 
-**État : version 0.1, première version complète.** Les notes sont stockées localement, sans compte ni
+**État : version 1.0.** Les notes sont stockées localement, sans compte ni
 connexion. Voir les [limites connues](#limites-connues).
 
 ## Fonctionnalités
 
 **Notes**
-- Bibliothèque d'accueil (matières en étagères, cahiers en couvertures), sous-matières imbriquées sans limite et pages ; nom, couleur et pictogramme.
-- Créer, renommer, dupliquer, réordonner, glisser-déposer, corbeille avec restauration, recherche.
+- Bibliothèque d'accueil : reprendre la dernière page, note rapide, pages récentes, couvertures des cahiers
+  filtrables par matière, favoris ; dossiers imbriqués sans limite et pages en miniature.
+- Recherche et commandes au clavier (Ctrl K) ; créer, renommer, dupliquer, réordonner, glisser-déposer,
+  corbeille avec restauration.
 - Enregistrement automatique ; sauvegarde et restauration complètes de la bibliothèque (zip).
 
 **Dessin**
 - Canevas vectoriel : zoom, déplacement, page infinie en hauteur. Annuler/rétablir illimités.
-- Stylo sensible à la pression (lissage, coins nets), surligneur, épaisseurs prédéfinies.
+- Stylo sensible à la pression (lissage, coins nets), surligneur ; dock d'outils flottant et trousse de
+  stylos préréglés ; mode concentration (F11).
 - Gomme de trait entier ou de zone ; lasso (déplacer, redimensionner, pivoter, copier, coller,
   recolorer) ; zones de texte ; pipette.
 - Couleurs : palette, favoris, sélecteur HSV, saisie hexadécimale.
@@ -32,7 +35,8 @@ connexion. Voir les [limites connues](#limites-connues).
 - Fonds de page : uni, petits et grands carreaux, lignes, pointillés, isométrique, image.
 - Import d'un PDF pour l'annoter ; import d'images en fond.
 - Export d'une page, d'un cahier, d'un dossier ou d'une matière en PDF vectoriel, PNG ou SVG.
-- Thèmes clair et sombre ; interface en français.
+- Thèmes clair et sombre (encre éclaircie à l'affichage sur papier sombre) ; interface en français,
+  polices Instrument Sans et Bricolage Grotesque.
 
 ## Installer
 
@@ -99,3 +103,8 @@ installé, installeur) ; le workflow `.github/workflows/release.yml` construit l
 ## Licence
 
 Double licence [MIT](LICENSE-MIT) ou [Apache-2.0](LICENSE-APACHE), au choix.
+
+Les polices intégrées, [Instrument Sans](assets/fonts/OFL-InstrumentSans.txt) et
+[Bricolage Grotesque](assets/fonts/OFL-BricolageGrotesque.txt), sont sous licence SIL Open Font
+License 1.1 ; les fichiers de `assets/fonts` en sont des instances statiques (graisses 400, 500, 600
+et 700).

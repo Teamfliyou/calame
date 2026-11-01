@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calame — Nouveau cahier</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=Caveat:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#4A4F5C}
+a{color:#2340C4;text-decoration:none}a:hover{color:#1A3099}
+input:focus{outline:none;border-color:#2340C4;box-shadow:0 0 0 4px rgba(35,64,196,.15)}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 48px 16px; display: flex; align-items: center; justify-content: center; font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif; color: #15171C; background: rgba(21,23,28,.55)">
+
+<section role="dialog" aria-labelledby="titre-dialogue" style="width: 100%; max-width: 860px; border-radius: 26px; background: #fff; box-shadow: 0 40px 100px -30px rgba(0,0,0,.6); overflow: hidden; display: flex; flex-wrap: wrap">
+
+<!-- Aperçu -->
+<div style="flex: 1 1 280px; background: #F4F5F7; padding: 36px 28px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; border-right: 1px solid #E7E9EE">
+<div style="position: relative; width: 210px; height: 280px">
+<div style="position: absolute; left: 22px; top: 12px; width: 196px; height: 268px; border-radius: 4px 10px 10px 4px; box-sizing: border-box; padding: 18px; font-family: 'Caveat', cursive; font-size: 18px; color: #1B2A6B; box-shadow: 0 10px 24px -14px rgba(16,24,40,.4); {{paperStyle}}">ΣF = m·a</div>
+<div style="position: absolute; left: 0; top: 0; width: 196px; height: 268px; border-radius: 6px 14px 14px 6px; box-sizing: border-box; padding: 20px 18px 18px 30px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; box-shadow: 0 2px 4px rgba(16,24,40,.12), 0 22px 40px -18px rgba(16,24,40,.55); {{coverStyle}}">
+<span style="position: absolute; left: 0; top: 0; bottom: 0; width: 14px; background: rgba(0,0,0,.18)"></span>
+<span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: .85">Physique-Chimie</span>
+<span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 24px; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em">{{name}}</span>
+</div>
+</div>
+<span style="font-size: 13px; color: #5B616E">Aperçu</span>
+</div>
+
+<!-- Formulaire -->
+<div style="flex: 1.4 1 380px; padding: 30px 32px 26px; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<h1 id="titre-dialogue" style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Nouveau cahier</h1>
+<a href="Main.dc.html" aria-label="Fermer" style="width: 36px; height: 36px; border-radius: 10px; background: #F1F2F5; color: #2B2F38; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="nom" style="font-size: 13px; font-weight: 600">Titre</label>
+<input id="nom" value="{{name}}" onChange="{{setName}}" style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #D5D9E2; font: inherit; font-size: 16px; color: #15171C; background: #fff">
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="matiere" style="font-size: 13px; font-weight: 600">Matière</label>
+<button id="matiere" style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #D5D9E2; background: #fff; font: inherit; font-size: 15px; color: #15171C; display: flex; align-items: center; gap: 10px; cursor: pointer; text-align: left">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #C24E3A"></span>
+<span style="flex: 1">Physique-Chimie</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B616E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+</div>
+
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+<legend style="font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 10px">Couverture</legend>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{colors}}" as="c" hint-placeholder-count="8">
+<button aria-label="{{c.label}}" aria-pressed="{{c.pressed}}" onClick="{{c.pick}}" style="width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="width: 30px; height: 30px; border-radius: 50%; {{c.swatch}}"></span></button>
+</sc-for>
+</div>
+</fieldset>
+
+<fieldset style="border: 0; margin: 0; padding: 0">
+<legend style="font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 10px">Papier</legend>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px">
+<sc-for list="{{papers}}" as="p" hint-placeholder-count="5">
+<button aria-pressed="{{p.pressed}}" onClick="{{p.pick}}" style="border: 0; padding: 0; background: transparent; font: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer">
+<span style="width: 100%; height: 76px; border-radius: 10px; box-sizing: border-box; {{p.preview}} {{p.ring}}"></span>
+<span style="font-size: 12px; {{p.labelStyle}}">{{p.label}}</span>
+</button>
+</sc-for>
+</div>
+</fieldset>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 6px; border-top: 1px solid #EEF0F3; margin-top: 2px">
+<a href="Main.dc.html" style="height: 46px; padding: 0 18px; border-radius: 12px; color: #2B2F38; font-size: 14px; font-weight: 500; display: flex; align-items: center; margin-top: 14px">Annuler</a>
+<a href="Editeur.dc.html" style="height: 46px; padding: 0 20px; border-radius: 12px; background: #2340C4; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; margin-top: 14px; box-shadow: 0 6px 16px -6px rgba(35,64,196,.55)">Créer et commencer à écrire
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+</div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { color: 2, paper: 1, name: 'Mécanique du point' }; }
+  renderVals() {
+    const s = this.state;
+    const colorDefs = [
+      { label: 'Encre', bg: '#2340C4', fg: '#fff' },
+      { label: 'Nuit', bg: '#15171C', fg: '#fff' },
+      { label: 'Brique', bg: '#C24E3A', fg: '#fff' },
+      { label: 'Safran', bg: '#E9A93A', fg: '#15171C' },
+      { label: 'Sauge', bg: '#2F7A5C', fg: '#fff' },
+      { label: 'Prune', bg: '#7A4FC4', fg: '#fff' },
+      { label: 'Lagon', bg: '#167676', fg: '#fff' },
+      { label: 'Kraft', bg: '#D8CBB0', fg: '#15171C' }
+    ];
+    const base = 'background-color:#FFFEFB;';
+    const paperDefs = [
+      { label: 'Uni', bg: base },
+      { label: 'Petits carreaux', bg: base + 'background-image:linear-gradient(#E6E9F0 1px,transparent 1px),linear-gradient(90deg,#E6E9F0 1px,transparent 1px);background-size:9px 9px;' },
+      { label: 'Lignes', bg: base + 'background-image:linear-gradient(transparent 13px,#DCE3F0 14px);background-size:100% 14px;' },
+      { label: 'Pointillés', bg: base + 'background-image:radial-gradient(#C9CFDB 1px,transparent 1.3px);background-size:10px 10px;' },
+      { label: 'Grands carreaux', bg: base + 'background-image:linear-gradient(#E6E9F0 1px,transparent 1px),linear-gradient(90deg,#E6E9F0 1px,transparent 1px);background-size:16px 16px;' }
+    ];
+    const c = colorDefs[s.color];
+    return {
+      name: s.name,
+      setName: (e) => this.setState({ name: e.target.value }),
+      coverStyle: 'background:' + c.bg + ';color:' + c.fg + ';',
+      paperStyle: paperDefs[s.paper].bg,
+      colors: colorDefs.map((d, i) => ({ ...d,
+        pressed: i === s.color ? 'true' : 'false',
+        swatch: 'background:' + d.bg + ';' + (i === s.color ? 'box-shadow:0 0 0 3px #fff,0 0 0 5px ' + d.bg + ';' : 'box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);'),
+        pick: () => this.setState({ color: i }) })),
+      papers: paperDefs.map((p, i) => ({ ...p,
+        pressed: i === s.paper ? 'true' : 'false',
+        preview: p.bg,
+        ring: i === s.paper ? 'box-shadow:0 0 0 2px #2340C4;' : 'box-shadow:inset 0 0 0 1px #DADEE6;',
+        labelStyle: i === s.paper ? 'color:#2340C4;font-weight:600;' : 'color:#5B616E;',
+        pick: () => this.setState({ paper: i }) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 name: Publication
 
-# Se déclenche en poussant une étiquette de version : git tag v0.2.0 && git push --tags
+# Se déclenche en poussant une étiquette de version : git tag v1.0.0 && git push --tags
 on:
   push:
     tags: ['v*']

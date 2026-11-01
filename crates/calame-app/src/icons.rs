@@ -1,14 +1,13 @@
-//! Icônes vectorielles dessinées à la main, dans l'esprit des SF Symbols : même épaisseur de
-//! trait, extrémités sobres, sur une grille de 24 × 24.
+//! Icônes vectorielles sur une grille de 24 × 24, trait de 1,8 et bouts ronds.
 //!
-//! Aucune police d'icônes n'est nécessaire : chaque icône est un tracé peint directement, donc
-//! nette à toutes les tailles et teintée par la couleur du texte.
+//! Les icônes de l'interface reprennent les tracés SVG des maquettes (`docs/refonte-ux`), lus par
+//! `svg_path` ; les instruments et les pictogrammes de matière sont dessinés à la main. Aucune
+//! police d'icônes n'est nécessaire : chaque icône est peinte directement, nette à toutes les
+//! tailles et teintée par la couleur demandée.
 
-use egui::{
-    pos2, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Response, Role, Sense, Shape,
-    Stroke, StrokeKind, Ui, Vec2, WidgetInfo,
-};
+use egui::{vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
 
+use crate::svg_path::{self, Polyline};
 use crate::theme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +40,24 @@ pub enum Icon {
     Paste,
     Recolor,
     Xmark,
+    // Interface « l'encre d'abord »
+    Search,
+    Home,
+    Clock,
+    Favorite,
+    Settings,
+    Moon,
+    Sun,
+    Focus,
+    Export,
+    ImportPdf,
+    Image,
+    Check,
+    ArrowRight,
+    ChevronRight,
+    ChevronDown,
+    Minus,
+    Close,
     // Éléments de la bibliothèque
     Folder,
     FolderPlus,
@@ -119,21 +136,19 @@ impl Icon {
     }
 }
 
-/// Pinceau à coordonnées 24 × 24, avec miroir horizontal optionnel.
+/// Pinceau à coordonnées 24 × 24.
 struct Brush<'a> {
     painter: &'a Painter,
     origin: Pos2,
     k: f32,
     stroke: Stroke,
     color: Color32,
-    flip: bool,
 }
 
 type Pts<'a> = &'a [(f32, f32)];
 
 impl Brush<'_> {
     fn p(&self, x: f32, y: f32) -> Pos2 {
-        let x = if self.flip { 24.0 - x } else { x };
         self.origin + vec2(x, y) * self.k
     }
 
@@ -142,8 +157,7 @@ impl Brush<'_> {
     }
 
     fn line(&self, pts: Pts<'_>) {
-        self.painter
-            .add(Shape::line(self.points(pts), self.stroke));
+        self.painter.add(Shape::line(self.points(pts), self.stroke));
     }
 
     fn closed(&self, pts: Pts<'_>) {
@@ -194,39 +208,151 @@ fn heart_points() -> Vec<(f32, f32)> {
         .map(|i| {
             let t = (i as f32 / 32.0) * std::f32::consts::TAU;
             let x = 16.0 * t.sin().powi(3);
-            let y = 13.0 * t.cos() - 5.0 * (2.0 * t).cos() - 2.0 * (3.0 * t).cos() - (4.0 * t).cos();
+            let y =
+                13.0 * t.cos() - 5.0 * (2.0 * t).cos() - 2.0 * (3.0 * t).cos() - (4.0 * t).cos();
             (12.0 + x * 0.55, 11.2 - y * 0.55)
         })
         .collect()
 }
 
+/// Tracé SVG (viewBox 24) et épaisseur de trait des icônes reprises des maquettes.
+fn svg_of(icon: Icon) -> Option<(&'static str, f32)> {
+    let path = match icon {
+        Icon::Pen => ("M4 20l1.2-4.4L16 4.8l3.2 3.2L8.4 18.8z M14 7l3 3", 1.8),
+        Icon::Highlighter => (
+            "M8 13.5l7.8-8.8 4.2 3.6-8 8.6z M8 13.5L6 19l2.5 1 3.5-3.7 M3.5 21h6",
+            1.8,
+        ),
+        Icon::EraserStroke => (
+            "M4.5 15.5l9-9.4a1.5 1.5 0 0 1 2.1 0l3.3 3.3a1.5 1.5 0 0 1 0 2.1l-7 7H7.4z M9.5 10.5l5 5 M12 18.5h8",
+            1.8,
+        ),
+        Icon::Lasso => (
+            "M12 4.5c4.6 0 8 2.3 8 5.2s-3.4 5.3-8 5.3-8-2.4-8-5.3 3.4-5.2 8-5.2z M7.6 14.3c-1.7 1.3-1.5 3.6.4 4.3 1.3.5 1.7 1.5 1.1 2.6",
+            1.8,
+        ),
+        Icon::Text => ("M5 7V5h14v2 M12 5v14 M9 19h6", 1.8),
+        Icon::Image => (
+            "M4 5.5h16v13H4z M4 15.5l4.5-4.5 4 4 2.5-2.5 5 5 M15.5 9.5h.01",
+            1.8,
+        ),
+        Icon::Ruler => (
+            "M3.5 16.5L16.5 3.5l4 4-13 13z M7.5 12.5l2 2 M10.5 9.5l2 2 M13.5 6.5l2 2",
+            1.8,
+        ),
+        Icon::Shapes => ("M12.5 8a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0z M13 13h7.5v7.5H13z", 1.8),
+        Icon::Undo => ("M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11", 1.8),
+        Icon::Redo => ("M15 14l5-5-5-5 M20 9H9.5a5.5 5.5 0 0 0 0 11H13", 1.8),
+        Icon::ChevronLeft => ("M15 18l-6-6 6-6", 2.0),
+        Icon::ChevronRight => ("M9 6l6 6-6 6", 2.2),
+        Icon::ChevronDown => ("M6 9l6 6 6-6", 2.2),
+        Icon::Plus => ("M12 5v14M5 12h14", 2.0),
+        Icon::Minus => ("M5 12h14", 2.0),
+        Icon::Sidebar => ("M6 4.5h12a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 17V7A2.5 2.5 0 0 1 6 4.5z M9.5 4.5v15", 1.8),
+        Icon::Trash => ("M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7", 1.8),
+        Icon::Copy => (
+            "M10 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8",
+            1.8,
+        ),
+        Icon::Folder => (
+            "M3.5 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z",
+            1.8,
+        ),
+        Icon::Search => ("M17.5 11a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z M20 20l-4.3-4.3", 1.8),
+        Icon::Home => (
+            "M4 11l8-7 8 7v8.5a.5.5 0 0 1-.5.5H15v-6H9v6H4.5a.5.5 0 0 1-.5-.5z",
+            1.8,
+        ),
+        Icon::Clock => ("M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z M12 8v4l2.8 1.8", 1.8),
+        Icon::Favorite => ("M12 4l2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z", 1.8),
+        Icon::Settings => (
+            "M4 7h9M17 7h3M4 17h3M11 17h9 M17 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0z M11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0z",
+            1.8,
+        ),
+        Icon::Moon => ("M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z", 1.8),
+        Icon::Sun => (
+            "M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6l1.4 1.4 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4",
+            1.8,
+        ),
+        Icon::Focus => ("M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5", 1.8),
+        Icon::Export => (
+            "M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v5.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V14",
+            1.8,
+        ),
+        Icon::ImportPdf => (
+            "M14 3H6.5a.5.5 0 0 0-.5.5v17a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V7z M14 3v4h4M12 11v6M9.5 14.5L12 17l2.5-2.5",
+            1.8,
+        ),
+        Icon::Check => ("M5 12.5l4.5 4.5L19 7.5", 2.4),
+        Icon::ArrowRight => ("M5 12h14M13 6l6 6-6 6", 2.0),
+        Icon::Close => ("M6 6l12 12M18 6L6 18", 2.2),
+        _ => return None,
+    };
+    Some(path)
+}
+
+thread_local! {
+    /// Tracés déjà découpés, pour ne pas relire les chaînes à chaque image.
+    static PARSED: std::cell::RefCell<std::collections::HashMap<&'static str, std::rc::Rc<Vec<Polyline>>>> =
+        std::cell::RefCell::default();
+}
+
+fn parsed(d: &'static str) -> std::rc::Rc<Vec<Polyline>> {
+    PARSED.with(|cache| {
+        cache
+            .borrow_mut()
+            .entry(d)
+            .or_insert_with(|| std::rc::Rc::new(svg_path::parse(d)))
+            .clone()
+    })
+}
+
+/// Peint un tracé SVG (viewBox de `view` unités) dans `rect`, avec des bouts ronds.
+pub fn paint_svg(
+    painter: &Painter,
+    rect: Rect,
+    d: &'static str,
+    view: f32,
+    width: f32,
+    color: Color32,
+) {
+    let k = rect.width().min(rect.height()) / view;
+    let origin = rect.center() - vec2(view, view) * 0.5 * k;
+    let stroke = Stroke::new((width * k).max(1.0), color);
+    for line in parsed(d).iter() {
+        let pts: Vec<Pos2> = line
+            .points
+            .iter()
+            .map(|&(x, y)| origin + vec2(x, y) * k)
+            .collect();
+        if line.closed {
+            painter.add(Shape::closed_line(pts, stroke));
+        } else {
+            if let (Some(first), Some(last)) = (pts.first(), pts.last()) {
+                painter.circle_filled(*first, stroke.width / 2.0, color);
+                painter.circle_filled(*last, stroke.width / 2.0, color);
+            }
+            painter.add(Shape::line(pts, stroke));
+        }
+    }
+}
+
 /// Peint `icon` au centre de `rect`, dans la couleur `color`.
 pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
+    if let Some((d, width)) = svg_of(icon) {
+        paint_svg(painter, rect, d, 24.0, width, color);
+        return;
+    }
     let k = rect.width().min(rect.height()) / 24.0;
     let stroke = Stroke::new((1.8 * k).max(1.3), color);
-    let mut b = Brush {
+    let b = Brush {
         painter,
         origin: rect.center() - vec2(12.0, 12.0) * k,
         k,
         stroke,
         color,
-        flip: false,
     };
     match icon {
-        Icon::Pen => {
-            b.closed(&[(15.0, 5.0), (19.0, 9.0), (9.0, 19.0), (4.0, 20.0), (5.0, 15.0)]);
-            b.line(&[(13.0, 7.0), (17.0, 11.0)]);
-        }
-        Icon::Highlighter => {
-            b.closed(&[(15.0, 3.0), (21.0, 9.0), (14.0, 16.0), (8.0, 10.0)]);
-            b.closed(&[(8.0, 10.0), (14.0, 16.0), (10.0, 19.0), (5.0, 19.0), (5.5, 14.0)]);
-            b.line(&[(13.0, 21.5), (21.0, 21.5)]);
-        }
-        Icon::EraserStroke => {
-            b.closed(&[(14.0, 4.0), (20.0, 10.0), (11.0, 19.0), (5.0, 13.0)]);
-            b.line(&[(9.0, 9.0), (15.0, 15.0)]);
-            b.line(&[(10.0, 21.0), (20.0, 21.0)]);
-        }
         Icon::EraserArea => {
             for i in 0..8 {
                 let from = i as f32 * 45.0 + 6.0;
@@ -234,33 +360,15 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             }
             b.dot(12.0, 12.0, 1.3);
         }
-        Icon::Lasso => {
-            let ellipse: Vec<(f32, f32)> = (0..24)
-                .map(|i| {
-                    let a = (i as f32 / 24.0) * std::f32::consts::TAU;
-                    (12.0 + 9.0 * a.cos(), 10.0 + 6.0 * a.sin())
-                })
-                .collect();
-            b.closed(&ellipse);
-            b.line(&[(9.5, 15.5), (8.0, 19.0), (10.5, 21.0)]);
-        }
-        Icon::Text => {
-            b.line(&[(6.0, 8.5), (6.0, 6.0), (18.0, 6.0), (18.0, 8.5)]);
-            b.line(&[(12.0, 6.0), (12.0, 19.0)]);
-            b.line(&[(9.0, 19.0), (15.0, 19.0)]);
-        }
         Icon::Pipette => {
             b.closed(&[(14.0, 4.0), (20.0, 10.0), (17.0, 13.0), (11.0, 7.0)]);
-            b.closed(&[(12.0, 8.0), (16.0, 12.0), (9.0, 19.0), (4.0, 20.0), (5.0, 15.0)]);
-        }
-        Icon::Ruler => {
-            b.closed(&[(3.0, 16.0), (16.0, 3.0), (21.0, 8.0), (8.0, 21.0)]);
-            for i in 1..=4 {
-                let t = i as f32 / 5.0;
-                let (x, y) = (3.0 + 13.0 * t, 16.0 - 13.0 * t);
-                let len = if i % 2 == 1 { 4.5 } else { 3.0 };
-                b.line(&[(x, y), (x + len * 0.707, y + len * 0.707)]);
-            }
+            b.closed(&[
+                (12.0, 8.0),
+                (16.0, 12.0),
+                (9.0, 19.0),
+                (4.0, 20.0),
+                (5.0, 15.0),
+            ]);
         }
         Icon::SetSquare45 => {
             b.closed(&[(4.0, 20.0), (4.0, 4.0), (20.0, 20.0)]);
@@ -290,18 +398,6 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             b.line(&[(13.0, 6.6), (19.0, 21.0)]);
             b.line(&[(8.0, 14.0), (16.0, 14.0)]);
         }
-        Icon::Shapes => {
-            b.circle(9.0, 9.0, 5.5);
-            b.rrect(11.0, 11.0, 20.0, 20.0, 1.5);
-        }
-        Icon::Undo | Icon::Redo => {
-            b.flip = icon == Icon::Redo;
-            b.line(&[(9.0, 4.5), (4.0, 9.5), (9.0, 14.5)]);
-            let mut path = vec![(4.0, 9.5)];
-            path.extend(arc(14.0, 14.5, 5.0, -90.0, 90.0));
-            path.push((8.0, 19.5));
-            b.line(&path);
-        }
         Icon::Recenter => {
             b.circle(12.0, 12.0, 6.0);
             b.line(&[(12.0, 2.5), (12.0, 6.0)]);
@@ -310,30 +406,10 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             b.line(&[(18.0, 12.0), (21.5, 12.0)]);
             b.dot(12.0, 12.0, 1.5);
         }
-        Icon::ChevronLeft => b.line(&[(15.0, 5.0), (8.0, 12.0), (15.0, 19.0)]),
-        Icon::Plus => {
-            b.line(&[(12.0, 5.0), (12.0, 19.0)]);
-            b.line(&[(5.0, 12.0), (19.0, 12.0)]);
-        }
-        Icon::Sidebar => {
-            b.rrect(3.0, 5.0, 21.0, 19.0, 3.0);
-            b.line(&[(9.5, 5.0), (9.5, 19.0)]);
-        }
-        Icon::Trash => {
-            b.line(&[(4.0, 7.0), (20.0, 7.0)]);
-            b.line(&[(9.0, 7.0), (9.0, 4.0), (15.0, 4.0), (15.0, 7.0)]);
-            b.closed(&[(6.0, 7.0), (7.0, 20.0), (17.0, 20.0), (18.0, 7.0)]);
-            b.line(&[(10.0, 11.0), (10.0, 16.0)]);
-            b.line(&[(14.0, 11.0), (14.0, 16.0)]);
-        }
         Icon::More => {
             b.dot(5.0, 12.0, 1.7);
             b.dot(12.0, 12.0, 1.7);
             b.dot(19.0, 12.0, 1.7);
-        }
-        Icon::Copy => {
-            b.rrect(9.0, 9.0, 20.0, 20.0, 2.0);
-            b.line(&[(9.0, 15.0), (4.0, 15.0), (4.0, 4.0), (15.0, 4.0), (15.0, 9.0)]);
         }
         Icon::Cut => {
             b.circle(7.0, 18.0, 2.6);
@@ -356,22 +432,21 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             b.line(&[(6.0, 6.0), (18.0, 18.0)]);
             b.line(&[(18.0, 6.0), (6.0, 18.0)]);
         }
-        Icon::Folder | Icon::FolderPlus => {
-            b.closed(&[
-                (3.0, 6.0),
-                (9.5, 6.0),
-                (11.5, 8.5),
-                (21.0, 8.5),
-                (21.0, 19.5),
-                (3.0, 19.5),
-            ]);
-            if icon == Icon::FolderPlus {
-                b.line(&[(12.0, 11.5), (12.0, 16.5)]);
-                b.line(&[(9.5, 14.0), (14.5, 14.0)]);
+        Icon::FolderPlus => {
+            if let Some((d, width)) = svg_of(Icon::Folder) {
+                paint_svg(painter, rect, d, 24.0, width, color);
             }
+            b.line(&[(12.0, 11.0), (12.0, 16.0)]);
+            b.line(&[(9.5, 13.5), (14.5, 13.5)]);
         }
         Icon::Page | Icon::PagePlus => {
-            b.closed(&[(6.0, 3.0), (14.0, 3.0), (19.0, 8.0), (19.0, 21.0), (6.0, 21.0)]);
+            b.closed(&[
+                (6.0, 3.0),
+                (14.0, 3.0),
+                (19.0, 8.0),
+                (19.0, 21.0),
+                (6.0, 21.0),
+            ]);
             b.line(&[(14.0, 3.0), (14.0, 8.0), (19.0, 8.0)]);
             if icon == Icon::PagePlus {
                 b.line(&[(12.5, 12.0), (12.5, 18.0)]);
@@ -398,7 +473,14 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Flask => {
             b.line(&[(10.0, 3.0), (14.0, 3.0)]);
-            b.line(&[(10.5, 3.0), (10.5, 10.0), (5.0, 19.5), (19.0, 19.5), (13.5, 10.0), (13.5, 3.0)]);
+            b.line(&[
+                (10.5, 3.0),
+                (10.5, 10.0),
+                (5.0, 19.5),
+                (19.0, 19.5),
+                (13.5, 10.0),
+                (13.5, 3.0),
+            ]);
             b.line(&[(7.5, 15.0), (16.5, 15.0)]);
         }
         Icon::Globe => {
@@ -447,185 +529,55 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Heart => b.closed(&heart_points()),
         Icon::Star => b.closed(&star_points()),
+        // Les autres icônes sont des tracés SVG, peints plus haut.
+        _ => {}
     }
-}
-
-/// Bouton d'icône sans cadre, comme dans une barre d'outils Apple : fond discret au survol,
-/// teinte d'accent quand il est actif. `label` sert d'infobulle et de nom pour les lecteurs
-/// d'écran.
-pub fn icon_button(
-    ui: &mut Ui,
-    icon: Icon,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-) -> Response {
-    let dark = ui.visuals().dark_mode;
-    let sense = if enabled {
-        Sense::click()
-    } else {
-        Sense::hover()
-    };
-    let (rect, response) = ui.allocate_exact_size(vec2(36.0, 32.0), sense);
-    if ui.is_rect_visible(rect) {
-        let accent = theme::accent(dark);
-        let background = if selected {
-            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40)
-        } else if enabled && response.hovered() {
-            theme::fill_hover(dark)
-        } else {
-            Color32::TRANSPARENT
-        };
-        ui.painter().rect_filled(rect, 8.0, background);
-        let color = if !enabled {
-            theme::label_secondary(dark).gamma_multiply(0.45)
-        } else if selected {
-            accent
-        } else {
-            theme::label(dark)
-        };
-        let glyph = Rect::from_center_size(rect.center(), Vec2::splat(20.0));
-        paint(ui.painter(), glyph, icon, color);
-    }
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
-    let response = response.on_hover_text(label);
-    if enabled {
-        response.on_hover_cursor(egui::CursorIcon::PointingHand)
-    } else {
-        response
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ButtonStyle {
-    /// Action principale : fond d'accent, texte blanc.
-    Prominent,
-    /// Action secondaire : fond gris discret.
-    Plain,
-    /// Texte seul teinté d'accent (retour, liens).
-    Link,
-}
-
-/// Bouton avec une icône facultative et un texte.
-pub fn text_button(
-    ui: &mut Ui,
-    icon: Option<Icon>,
-    text: &str,
-    style: ButtonStyle,
-    enabled: bool,
-) -> Response {
-    let dark = ui.visuals().dark_mode;
-    let accent = theme::accent(dark);
-    let color = match style {
-        ButtonStyle::Prominent => Color32::WHITE,
-        ButtonStyle::Plain => theme::label(dark),
-        ButtonStyle::Link => accent,
-    };
-    let color = if enabled {
-        color
-    } else {
-        color.gamma_multiply(0.45)
-    };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), FontId::proportional(14.0), color);
-    let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
-    let pad = if style == ButtonStyle::Link { 4.0 } else { 14.0 };
-    let size = vec2(galley.size().x + icon_width + pad * 2.0, 32.0);
-    let sense = if enabled {
-        Sense::click()
-    } else {
-        Sense::hover()
-    };
-    let (rect, response) = ui.allocate_exact_size(size, sense);
-    if ui.is_rect_visible(rect) {
-        let hovered = enabled && response.hovered();
-        let background = match style {
-            ButtonStyle::Prominent => {
-                if hovered {
-                    accent.gamma_multiply(0.88)
-                } else {
-                    accent
-                }
-            }
-            ButtonStyle::Plain => {
-                if hovered {
-                    theme::fill_hover(dark)
-                } else {
-                    theme::fill_secondary(dark)
-                }
-            }
-            ButtonStyle::Link => {
-                if hovered {
-                    theme::fill_hover(dark)
-                } else {
-                    Color32::TRANSPARENT
-                }
-            }
-        };
-        ui.painter().rect_filled(rect, 8.0, background);
-        let mut x = rect.left() + pad;
-        if let Some(icon) = icon {
-            let glyph = Rect::from_center_size(pos2(x + 9.0, rect.center().y), Vec2::splat(18.0));
-            paint(ui.painter(), glyph, icon, color);
-            x += icon_width;
-        }
-        let y = rect.center().y - galley.size().y / 2.0;
-        ui.painter().galley(pos2(x, y), galley, color);
-    }
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, text));
-    if enabled {
-        response.on_hover_cursor(egui::CursorIcon::PointingHand)
-    } else {
-        response
-    }
-}
-
-/// Pastille de couleur ronde ; un anneau d'accent entoure la couleur choisie. `label` est
-/// l'infobulle et le nom lu par les lecteurs d'écran.
-pub fn color_dot(
-    ui: &mut Ui,
-    color: Color32,
-    diameter: f32,
-    selected: bool,
-    label: &str,
-) -> Response {
-    let dark = ui.visuals().dark_mode;
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(diameter + 8.0), Sense::click());
-    if ui.is_rect_visible(rect) {
-        let radius = diameter / 2.0 * if response.hovered() { 1.08 } else { 1.0 };
-        let center = rect.center();
-        ui.painter().circle_filled(center, radius, color);
-        ui.painter()
-            .circle_stroke(center, radius, Stroke::new(1.0, theme::separator(dark)));
-        if selected {
-            ui.painter()
-                .circle_stroke(center, radius + 3.0, Stroke::new(2.0, theme::accent(dark)));
-        }
-    }
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
-    response
-        .on_hover_text(label)
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Pastille arrondie colorée portant le pictogramme d'une matière.
 pub fn tile(painter: &Painter, rect: Rect, color: Color32, glyph: &str) {
     painter.rect_filled(rect, rect.width() * 0.24, color);
+    let ink = theme::on_color(color);
     let inner = Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.56));
     match Icon::from_key(glyph) {
-        Some(icon) => paint(painter, inner, icon, Color32::WHITE),
+        Some(icon) => paint(painter, inner, icon, ink),
         None if !glyph.trim().is_empty() => {
             painter.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
                 glyph.trim(),
                 FontId::proportional(rect.width() * 0.5),
-                Color32::WHITE,
+                ink,
             );
         }
-        None => paint(painter, inner, Icon::Book, Color32::WHITE),
+        None => paint(painter, inner, Icon::Book, ink),
     }
+}
+
+/// Logo de Calame : carré d'encre, plume blanche et vague safran (d'après `assets/icon.png`).
+pub fn logo(painter: &Painter, rect: Rect, accent: Color32) {
+    let k = rect.width() / 32.0;
+    painter.rect_filled(rect, 9.0 * k, accent);
+    let p = |x: f32, y: f32| rect.min + vec2(x, y) * k;
+    painter.add(Shape::convex_polygon(
+        vec![
+            p(9.0, 22.0),
+            p(11.2, 16.4),
+            p(20.5, 7.5),
+            p(23.5, 10.5),
+            p(14.5, 19.5),
+        ],
+        Color32::WHITE,
+        Stroke::NONE,
+    ));
+    paint_svg(
+        painter,
+        rect,
+        "M7 26c1.5-1.6 3-1.6 4.5 0s3 1.6 4.5 0 3-1.6 4.5 0 3 1.6 4.5 0",
+        32.0,
+        2.0,
+        theme::SAFFRON,
+    );
 }
 
 #[cfg(test)]
@@ -641,6 +593,56 @@ mod tests {
         assert_eq!(Icon::from_key("🧪"), Some(Icon::Flask));
         assert_eq!(Icon::from_key("🦄"), None);
         assert_eq!(Icon::from_key(""), None);
+    }
+
+    #[test]
+    fn every_interface_icon_has_a_readable_path() {
+        for icon in [
+            Icon::Pen,
+            Icon::Highlighter,
+            Icon::EraserStroke,
+            Icon::Lasso,
+            Icon::Text,
+            Icon::Image,
+            Icon::Ruler,
+            Icon::Shapes,
+            Icon::Undo,
+            Icon::Redo,
+            Icon::ChevronLeft,
+            Icon::ChevronRight,
+            Icon::ChevronDown,
+            Icon::Plus,
+            Icon::Minus,
+            Icon::Sidebar,
+            Icon::Trash,
+            Icon::Copy,
+            Icon::Folder,
+            Icon::Search,
+            Icon::Home,
+            Icon::Clock,
+            Icon::Favorite,
+            Icon::Settings,
+            Icon::Moon,
+            Icon::Sun,
+            Icon::Focus,
+            Icon::Export,
+            Icon::ImportPdf,
+            Icon::Check,
+            Icon::ArrowRight,
+            Icon::Close,
+        ] {
+            let (d, _) = svg_of(icon).unwrap_or(("", 0.0));
+            let lines = svg_path::parse(d);
+            assert!(!lines.is_empty(), "{icon:?}");
+            for line in lines {
+                for (x, y) in line.points {
+                    assert!(
+                        (-0.5..=24.5).contains(&x) && (-0.5..=24.5).contains(&y),
+                        "{icon:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

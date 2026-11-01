@@ -1,35 +1,42 @@
-//! Sommaire d'un cahier : sous-matières et pages, avec recherche et glisser-déposer.
+//! Sommaire d'un cahier : dossiers repliables et pages en miniature, glisser-déposer et menus
+//! contextuels ; ou l'aperçu de toutes les pages en grille.
 //!
-//! La bibliothèque elle-même (matières et cahiers) est dans `home_ui`. Ce panneau n'affiche que le
-//! contenu du cahier ouvert : ses sous-matières, imbriquables sans limite, et ses pages.
+//! La bibliothèque elle-même (matières et cahiers) est dans `home_ui`.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-use calame_core::{Color, LibraryTree, Node, NodeId, NodeKind};
-use egui::collapsing_header::CollapsingState;
-use egui::{vec2, Align2, Color32, FontId, Rect, Response, RichText, Sense, Ui};
+use calame_core::{Background, Color, LibraryTree, Node, NodeId, NodeKind};
+use egui::{pos2, vec2, Align2, Color32, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use crate::files::ExportFormat;
 use crate::i18n::t;
-use crate::icons::{self, ButtonStyle, Icon};
-use crate::theme;
+use crate::icons::{self, Icon};
+use crate::theme::{self, Weight};
+use crate::thumbs::ThumbSource;
+use crate::toolbar::Command;
+use crate::widgets::{self, Button, ButtonStyle};
 
 /// Ce que l'utilisateur a demandé dans l'interface ; appliqué ensuite par l'application.
 pub enum Action {
     /// Ouvrir une page du cahier courant.
     Select(NodeId),
+    /// Ouvrir une page de n'importe quel cahier (bibliothèque, recherche).
+    OpenPage(NodeId),
     /// Entrer dans un cahier de la bibliothèque.
     OpenNotebook(NodeId),
     /// Exporter une page, un cahier, une sous-matière ou une matière.
     Export(NodeId, ExportFormat),
     /// Importer un PDF dans une matière, un cahier ou une sous-matière.
     ImportPdf(NodeId),
+    /// Importer un PDF déposé sur la fenêtre (`None` : la matière choisie, ou la première).
+    ImportPdfPath(Option<NodeId>, PathBuf),
     /// Créer avec le nom par défaut, puis renommer sur place.
     Create {
         parent: Option<NodeId>,
         kind: NodeKind,
     },
-    /// Créer avec le nom, la couleur et le pictogramme choisis dans la fenêtre de création.
+    /// Créer une matière avec le nom, la couleur et le pictogramme choisis.
     CreateWith {
         parent: Option<NodeId>,
         kind: NodeKind,
@@ -37,25 +44,44 @@ pub enum Action {
         color: Color,
         icon: String,
     },
+    /// Créer un cahier (et sa matière s'il n'y en a pas), avec son papier, puis l'ouvrir.
+    CreateNotebook {
+        subject: Option<NodeId>,
+        name: String,
+        color: Color,
+        paper: Background,
+    },
+    /// Modifier un cahier : nom, couverture, matière et papier des nouvelles pages.
+    EditNotebook {
+        id: NodeId,
+        name: String,
+        color: Color,
+        subject: Option<NodeId>,
+        paper: Background,
+    },
     Rename(NodeId, String),
     Duplicate(NodeId),
     Trash(NodeId),
     MoveBy(NodeId, i32),
     Move(NodeId, Option<NodeId>, Option<usize>),
     SetStyle(NodeId, Color, String),
+    ToggleFavorite(NodeId),
     Restore(NodeId),
     DeleteForever(NodeId),
     EmptyTrash,
+    /// Une commande de l'éditeur ou de l'application (palette, menus de la bibliothèque).
+    Command(Command),
 }
 
 #[derive(Default)]
 pub struct SidebarState {
-    search: String,
     renaming: Option<(NodeId, String)>,
     /// Vrai pendant la première image de l'édition, pour donner le focus au champ.
     rename_fresh: bool,
-    /// Sous-matière choisie comme destination des prochains ajouts.
+    /// Dossier choisi comme destination des prochains ajouts.
     focus: Option<NodeId>,
+    /// 0 : arborescence des pages ; 1 : aperçu en grille.
+    view: usize,
 }
 
 impl SidebarState {
@@ -64,9 +90,9 @@ impl SidebarState {
         self.rename_fresh = true;
     }
 
-    /// Où iront une nouvelle page ou une nouvelle sous-matière : la sous-matière choisie, sinon
-    /// le dossier de la page ouverte, sinon la racine du cahier.
-    fn target(&self, tree: &LibraryTree, notebook: NodeId, selected: Option<NodeId>) -> NodeId {
+    /// Où iront une nouvelle page ou un nouveau dossier : le dossier choisi, sinon le dossier de
+    /// la page ouverte, sinon la racine du cahier.
+    pub fn target(&self, tree: &LibraryTree, notebook: NodeId, selected: Option<NodeId>) -> NodeId {
         let usable = |id: NodeId| {
             tree.get(id).is_some_and(|n| n.kind.is_container()) && tree.is_within(id, notebook)
         };
@@ -84,19 +110,26 @@ impl SidebarState {
     }
 }
 
+fn open_id(id: NodeId) -> egui::Id {
+    egui::Id::unique(("calame-ouvert", id))
+}
+
+fn is_open(ctx: &egui::Context, id: NodeId) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(open_id(id)))
+        .unwrap_or(false)
+}
+
+fn set_open(ctx: &egui::Context, id: NodeId, open: bool) {
+    ctx.data_mut(|d| d.insert_temp(open_id(id), open));
+}
+
 /// Déplie `id` dans l'arborescence (par exemple après y avoir créé un élément).
 pub fn expand(ctx: &egui::Context, id: NodeId) {
-    let mut state = CollapsingState::load_with_default_open(ctx, header_id(id), false);
-    state.set_open(true);
-    state.store(ctx);
+    set_open(ctx, id, true);
 }
 
-fn header_id(id: NodeId) -> egui::Id {
-    egui::Id::unique(("calame-node", id))
-}
-
-/// Couleur d'affichage d'un élément : les cahiers et sous-matières enregistrés sans couleur
-/// propre prennent celle de leur matière.
+/// Couleur d'affichage d'un élément : les cahiers et dossiers enregistrés sans couleur propre
+/// prennent celle de leur matière.
 pub fn node_color(tree: &LibraryTree, node: &Node) -> Color {
     if node.kind == NodeKind::Subject || node.color != theme::LEGACY_NEUTRAL {
         return node.color;
@@ -104,7 +137,32 @@ pub fn node_color(tree: &LibraryTree, node: &Node) -> Color {
     tree.path(node.id)
         .iter()
         .find(|n| n.kind == NodeKind::Subject)
-        .map_or(theme::COVER_COLORS[6], |s| s.color)
+        .map_or(theme::COVER_COLORS[0], |s| s.color)
+}
+
+/// Pages d'un sous-arbre dans l'ordre de lecture (dossiers dépliés).
+pub fn page_order(tree: &LibraryTree, root: NodeId) -> Vec<NodeId> {
+    fn walk(tree: &LibraryTree, id: NodeId, out: &mut Vec<NodeId>) {
+        for child in tree.children(Some(id)) {
+            if child.kind == NodeKind::Page {
+                out.push(child.id);
+            } else {
+                walk(tree, child.id, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(tree, root, &mut out);
+    out
+}
+
+struct Ctx<'a, 'b> {
+    tree: &'a LibraryTree,
+    selected: Option<NodeId>,
+    target: NodeId,
+    numbers: HashMap<NodeId, usize>,
+    thumbs: &'a mut ThumbSource<'b>,
+    actions: Vec<Action>,
 }
 
 pub fn show(
@@ -113,269 +171,413 @@ pub fn show(
     tree: &LibraryTree,
     notebook: NodeId,
     selected: Option<NodeId>,
+    thumbs: &mut ThumbSource<'_>,
 ) -> Vec<Action> {
-    let mut actions = Vec::new();
-    let Some(nb) = tree.get(notebook) else {
-        return actions;
-    };
+    if tree.get(notebook).is_none() {
+        return Vec::new();
+    }
     let dark = ui.visuals().dark_mode;
-    let tint = theme::to_color32(node_color(tree, nb));
-
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::hover());
-        icons::tile(ui.painter(), rect, tint, "book");
-        ui.add(egui::Label::new(RichText::new(&nb.name).size(16.0).strong()).truncate());
-    });
-    ui.add(
-        egui::TextEdit::singleline(&mut state.search)
-            .hint_text(t("search-in-notebook"))
-            .desired_width(f32::INFINITY),
-    );
-
     let target = state.target(tree, notebook, selected);
-    let target_name = tree.get(target).map_or("", |n| n.name.as_str());
+    let order = page_order(tree, notebook);
+    let numbers = order
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i + 1))
+        .collect();
+    let mut cx = Ctx {
+        tree,
+        selected,
+        target,
+        numbers,
+        thumbs,
+        actions: Vec::new(),
+    };
+
+    egui::Frame::new().inner_margin(12).show(ui, |ui| {
+        widgets::segmented(ui, &[t("pages"), t("overview")], &mut state.view);
+    });
+
     egui::Panel::bottom("sommaire-actions")
         .resizable(false)
+        .frame(
+            egui::Frame::new()
+                .fill(theme::sidebar(dark))
+                .inner_margin(12)
+                .stroke(Stroke::new(1.0, theme::border(dark))),
+        )
         .show(ui, |ui| {
-            ui.add_space(2.0);
-            ui.add(
-                egui::Label::new(
-                    RichText::new(format!("{} {target_name}", t("add-in")))
-                        .small()
-                        .color(theme::label_secondary(dark)),
-                )
-                .truncate(),
-            );
-            ui.horizontal(|ui| {
-                if icons::text_button(ui, Some(Icon::PagePlus), t("page"), ButtonStyle::Plain, true)
+            ui.columns(2, |cols| {
+                if Button::new(t("page"), ButtonStyle::Secondary)
+                    .icon(Icon::Plus)
+                    .height(40.0)
+                    .full_width()
+                    .show(&mut cols[0])
+                    .on_hover_text(t("new-page-hint"))
                     .clicked()
                 {
-                    actions.push(Action::Create {
+                    cx.actions.push(Action::Create {
                         parent: Some(target),
                         kind: NodeKind::Page,
                     });
                 }
-                if icons::text_button(
-                    ui,
-                    Some(Icon::FolderPlus),
-                    t("sub-subject"),
-                    ButtonStyle::Plain,
-                    true,
-                )
-                .on_hover_text(t("sub-subject-hint"))
-                .clicked()
+                if Button::new(t("folder"), ButtonStyle::Secondary)
+                    .icon(Icon::Folder)
+                    .height(40.0)
+                    .full_width()
+                    .show(&mut cols[1])
+                    .on_hover_text(t("sub-subject-hint"))
+                    .clicked()
                 {
-                    actions.push(Action::Create {
+                    cx.actions.push(Action::Create {
                         parent: Some(target),
                         kind: NodeKind::Folder,
                     });
                 }
             });
-            ui.add_space(2.0);
         });
 
-    let filter = (!state.search.trim().is_empty()).then(|| tree.matching(&state.search));
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let children = tree.children(Some(notebook));
-            let visible = children
-                .iter()
-                .filter(|n| filter.as_ref().map_or(true, |f| f.contains(&n.id)))
-                .count();
-            if filter.is_some() && visible == 0 {
-                ui.weak(t("no-results"));
-            } else if children.is_empty() {
-                ui.add_space(12.0);
-                ui.vertical_centered(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(vec2(36.0, 36.0), Sense::hover());
-                    icons::paint(
-                        ui.painter(),
-                        rect,
-                        Icon::FolderPlus,
-                        theme::label_secondary(dark),
-                    );
-                    ui.label(
-                        RichText::new(t("notebook-empty")).color(theme::label_secondary(dark)),
-                    );
+            egui::Frame::new()
+                .inner_margin(egui::Margin {
+                    left: 8,
+                    right: 8,
+                    top: 0,
+                    bottom: 8,
+                })
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    if state.view == 1 {
+                        overview(ui, &mut cx, &order);
+                        return;
+                    }
+                    let children = tree.children(Some(notebook));
+                    if children.is_empty() {
+                        ui.add_space(12.0);
+                        ui.vertical_centered(|ui| {
+                            let (rect, _) =
+                                ui.allocate_exact_size(vec2(36.0, 36.0), Sense::hover());
+                            icons::paint(
+                                ui.painter(),
+                                rect,
+                                Icon::FolderPlus,
+                                theme::label_secondary(dark),
+                            );
+                            ui.label(
+                                egui::RichText::new(t("notebook-empty"))
+                                    .color(theme::label_secondary(dark)),
+                            );
+                        });
+                    }
+                    for node in children {
+                        draw_node(ui, state, &mut cx, node, 0);
+                    }
                 });
-            }
-            for node in children {
-                draw_node(
-                    ui,
-                    state,
-                    tree,
-                    node,
-                    selected,
-                    filter.as_ref(),
-                    target,
-                    &mut actions,
-                );
-            }
         });
-    actions
+    cx.actions
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Aperçu : toutes les pages du cahier en grille de deux colonnes.
+fn overview(ui: &mut Ui, cx: &mut Ctx<'_, '_>, order: &[NodeId]) {
+    let dark = ui.visuals().dark_mode;
+    let width = ui.available_width();
+    let gap = 10.0;
+    let cell = (width - gap) / 2.0;
+    let thumb = vec2(cell, cell * 4.0 / 3.0);
+    for chunk in order.chunks(2) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
+            for id in chunk {
+                let (rect, response) =
+                    ui.allocate_exact_size(thumb + vec2(0.0, 22.0), Sense::click());
+                if ui.is_rect_visible(rect) {
+                    let page = Rect::from_min_size(rect.min, thumb);
+                    cx.thumbs
+                        .paint(ui.ctx(), ui.painter(), page, *id, 6.0, dark);
+                    let active = cx.selected == Some(*id);
+                    let (ring, width) = if active {
+                        (theme::accent(dark), 2.0)
+                    } else if response.hovered() {
+                        (theme::field_border(dark), 1.0)
+                    } else {
+                        (theme::border(dark), 1.0)
+                    };
+                    ui.painter().rect_stroke(
+                        page,
+                        6.0,
+                        Stroke::new(width, ring),
+                        StrokeKind::Outside,
+                    );
+                    let n = cx.numbers.get(id).copied().unwrap_or(0);
+                    ui.painter().text(
+                        pos2(page.center().x, page.bottom() + 11.0),
+                        Align2::CENTER_CENTER,
+                        n.to_string(),
+                        theme::font(
+                            12.0,
+                            if active {
+                                Weight::Semibold
+                            } else {
+                                Weight::Regular
+                            },
+                        ),
+                        if active {
+                            theme::accent(dark)
+                        } else {
+                            theme::label_secondary(dark)
+                        },
+                    );
+                }
+                let name = cx.tree.get(*id).map_or("", |n| n.name.as_str());
+                response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+                if response
+                    .on_hover_text(name)
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked()
+                {
+                    cx.actions.push(Action::Select(*id));
+                }
+            }
+        });
+        ui.add_space(6.0);
+    }
+}
+
 fn draw_node(
     ui: &mut Ui,
     state: &mut SidebarState,
-    tree: &LibraryTree,
+    cx: &mut Ctx<'_, '_>,
     node: &Node,
-    selected: Option<NodeId>,
-    filter: Option<&HashSet<NodeId>>,
-    target: NodeId,
-    actions: &mut Vec<Action>,
+    depth: usize,
 ) {
-    if filter.is_some_and(|f| !f.contains(&node.id)) {
-        return;
-    }
     if !node.kind.is_container() {
-        row(ui, state, tree, node, selected, target, actions);
+        row(ui, state, cx, node, depth);
         return;
     }
-    let children = tree.children(Some(node.id));
-    if filter.is_some() {
-        // Recherche : tout est déplié, sans état persistant.
-        row(ui, state, tree, node, selected, target, actions);
-        ui.indent(("calame-search", node.id), |ui| {
+    row(ui, state, cx, node, depth);
+    if is_open(ui.ctx(), node.id) {
+        let children = cx.tree.children(Some(node.id));
+        if !children.is_empty() {
+            ui.add_space(2.0);
             for child in children {
-                draw_node(ui, state, tree, child, selected, filter, target, actions);
+                draw_node(ui, state, cx, child, depth + 1);
             }
-        });
-    } else {
-        CollapsingState::load_with_default_open(ui.ctx(), header_id(node.id), false)
-            .show_header(ui, |ui| {
-                row(ui, state, tree, node, selected, target, actions);
-            })
-            .body(|ui| {
-                for child in children {
-                    draw_node(ui, state, tree, child, selected, filter, target, actions);
-                }
-            });
+            ui.add_space(4.0);
+        }
     }
 }
 
-/// Ligne du sommaire : pictogramme, nom, fond au survol et à la sélection.
-fn node_label(
-    ui: &mut Ui,
-    node: &Node,
-    tint: Color32,
-    selected: bool,
-    highlighted: bool,
-) -> Response {
+/// Ligne de dossier : chevron, icône, nom et nombre de pages.
+fn folder_row(ui: &mut Ui, cx: &Ctx<'_, '_>, node: &Node, depth: usize) -> Response {
     let dark = ui.visuals().dark_mode;
+    let open = is_open(ui.ctx(), node.id);
     let width = ui.available_width().max(80.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 36.0), Sense::click());
     if ui.is_rect_visible(rect) {
-        let accent = theme::accent(dark);
-        let background = if selected {
-            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 46)
-        } else if highlighted {
-            theme::fill_secondary(dark)
-        } else if response.hovered() {
-            theme::fill_hover(dark)
+        let highlighted = cx.target == node.id;
+        let background = if highlighted || response.hovered() {
+            theme::hover(dark)
         } else {
             Color32::TRANSPARENT
         };
-        ui.painter().rect_filled(rect, 7.0, background);
-
-        let (icon, icon_color) = match node.kind {
-            NodeKind::Page => (
-                Icon::Page,
-                if selected {
-                    accent
-                } else {
-                    theme::label_secondary(dark)
-                },
-            ),
-            _ => (Icon::Folder, tint),
-        };
-        let glyph = Rect::from_center_size(
-            egui::pos2(rect.left() + 15.0, rect.center().y),
-            vec2(18.0, 18.0),
-        );
-        icons::paint(ui.painter(), glyph, icon, icon_color);
-
-        let text_color = if selected {
-            accent
+        ui.painter().rect_filled(rect, 8.0, background);
+        let mut x = rect.left() + 8.0 + depth as f32 * 22.0;
+        let y = rect.center().y;
+        let chevron = if open {
+            Icon::ChevronDown
         } else {
-            theme::label(dark)
+            Icon::ChevronRight
         };
-        ui.painter_at(rect.shrink2(vec2(2.0, 0.0))).text(
-            egui::pos2(rect.left() + 32.0, rect.center().y),
+        icons::paint(
+            ui.painter(),
+            Rect::from_center_size(pos2(x + 7.0, y), Vec2::splat(14.0)),
+            chevron,
+            theme::label_secondary(dark),
+        );
+        x += 22.0;
+        let folder_color = if open || highlighted {
+            theme::accent(dark)
+        } else {
+            theme::label_secondary(dark)
+        };
+        icons::paint(
+            ui.painter(),
+            Rect::from_center_size(pos2(x + 8.0, y), Vec2::splat(16.0)),
+            Icon::Folder,
+            folder_color,
+        );
+        x += 24.0;
+        let count = cx.tree.page_count(node.id).to_string();
+        let count_rect = ui.painter().text(
+            pos2(rect.right() - 8.0, y),
+            Align2::RIGHT_CENTER,
+            count,
+            theme::font(12.0, Weight::Regular),
+            theme::label_secondary(dark),
+        );
+        let weight = if open {
+            Weight::Semibold
+        } else {
+            Weight::Regular
+        };
+        let color = if open {
+            theme::label(dark)
+        } else {
+            theme::icon(dark)
+        };
+        widgets::truncated(
+            ui.painter(),
+            pos2(x, y),
             Align2::LEFT_CENTER,
             &node.name,
-            FontId::proportional(14.0),
-            text_color,
+            theme::font(13.0, weight),
+            color,
+            count_rect.left() - x - 8.0,
         );
     }
     response
 }
 
-fn row(
-    ui: &mut Ui,
-    state: &mut SidebarState,
-    tree: &LibraryTree,
-    node: &Node,
-    selected: Option<NodeId>,
-    target: NodeId,
-    actions: &mut Vec<Action>,
-) {
-    if let Some((id, text)) = state.renaming.as_mut().filter(|(id, _)| *id == node.id) {
-        let response = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
-        if state.rename_fresh {
-            response.request_focus();
-            state.rename_fresh = false;
+/// Ligne de page : miniature 46 × 60, titre et « Page N ».
+fn page_row(ui: &mut Ui, cx: &mut Ctx<'_, '_>, node: &Node, depth: usize) -> Response {
+    let dark = ui.visuals().dark_mode;
+    let width = ui.available_width().max(80.0);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 72.0), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let active = cx.selected == Some(node.id);
+        let background = if active {
+            theme::accent_soft(dark)
+        } else if response.hovered() {
+            theme::hover(dark)
+        } else {
+            Color32::TRANSPARENT
+        };
+        let indent = depth as f32 * 22.0;
+        let body = Rect::from_min_max(pos2(rect.left() + indent, rect.top()), rect.max);
+        ui.painter().rect_filled(body, 10.0, background);
+        let thumb =
+            Rect::from_min_size(pos2(body.left() + 8.0, body.top() + 6.0), vec2(46.0, 60.0));
+        cx.thumbs
+            .paint(ui.ctx(), ui.painter(), thumb, node.id, 5.0, dark);
+        if active {
+            ui.painter().rect_stroke(
+                thumb,
+                5.0,
+                Stroke::new(2.0, theme::accent(dark)),
+                StrokeKind::Outside,
+            );
+        } else {
+            ui.painter().rect_stroke(
+                thumb,
+                5.0,
+                Stroke::new(1.0, theme::border(dark)),
+                StrokeKind::Outside,
+            );
         }
-        let cancelled = ui.input(|i| i.key_pressed(egui::Key::Escape));
-        if cancelled {
-            state.renaming = None;
-        } else if response.lost_focus() {
-            actions.push(Action::Rename(*id, text.clone()));
+        let x = thumb.right() + 12.0;
+        let max = body.right() - x - 6.0;
+        widgets::truncated(
+            ui.painter(),
+            pos2(x, body.center().y - 9.0),
+            Align2::LEFT_CENTER,
+            &node.name,
+            theme::font(13.0, Weight::Medium),
+            theme::label(dark),
+            max,
+        );
+        let n = cx.numbers.get(&node.id).copied().unwrap_or(0);
+        ui.painter().text(
+            pos2(x, body.center().y + 10.0),
+            Align2::LEFT_CENTER,
+            format!("{} {n}", t("page")),
+            theme::font(12.0, Weight::Regular),
+            theme::label_secondary(dark),
+        );
+    }
+    response
+}
+
+fn row(ui: &mut Ui, state: &mut SidebarState, cx: &mut Ctx<'_, '_>, node: &Node, depth: usize) {
+    if state
+        .renaming
+        .as_ref()
+        .is_some_and(|(id, _)| *id == node.id)
+    {
+        let mut finished = None;
+        ui.horizontal(|ui| {
+            ui.add_space(8.0 + depth as f32 * 22.0);
+            let Some((id, text)) = state.renaming.as_mut() else {
+                return;
+            };
+            let response = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+            if state.rename_fresh {
+                response.request_focus();
+                state.rename_fresh = false;
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                finished = Some(None);
+            } else if response.lost_focus() {
+                finished = Some(Some((*id, text.clone())));
+            }
+        });
+        if let Some(rename) = finished {
+            if let Some((id, name)) = rename {
+                cx.actions.push(Action::Rename(id, name));
+            }
             state.renaming = None;
         }
         return;
     }
 
-    let tint = theme::to_color32(node_color(tree, node));
-    let is_selected = selected == Some(node.id);
-    let highlighted = node.kind == NodeKind::Folder && target == node.id;
     let drag = ui.dnd_drag_source(egui::Id::unique(("calame-drag", node.id)), node.id, |ui| {
-        node_label(ui, node, tint, is_selected, highlighted)
+        if node.kind == NodeKind::Page {
+            page_row(ui, cx, node, depth)
+        } else {
+            folder_row(ui, cx, node, depth)
+        }
     });
     let (label, response) = (drag.inner, drag.response);
+    let name = node.name.clone();
+    label.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
 
-    if label.clicked() {
+    if label
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+    {
         if node.kind == NodeKind::Page {
             state.focus = None;
-            actions.push(Action::Select(node.id));
+            cx.actions.push(Action::Select(node.id));
         } else {
-            // Une sous-matière choisie devient la destination des prochains ajouts.
+            // Un dossier choisi devient la destination des prochains ajouts ; un clic le replie.
+            let open = is_open(ui.ctx(), node.id);
+            if state.focus == Some(node.id) || !open {
+                set_open(ui.ctx(), node.id, !open);
+            }
             state.focus = Some(node.id);
-            expand(ui.ctx(), node.id);
         }
     }
     if let Some(dragged) = response.dnd_hover_payload::<NodeId>() {
-        if tree.drop_target(*dragged, node.id).is_some() {
+        if cx.tree.drop_target(*dragged, node.id).is_some() {
             ui.painter().rect_stroke(
                 response.rect,
-                7.0,
-                ui.visuals().selection.stroke,
-                egui::StrokeKind::Outside,
+                8.0,
+                Stroke::new(1.5, theme::accent(ui.visuals().dark_mode)),
+                StrokeKind::Outside,
             );
         }
     }
     if let Some(dragged) = response.dnd_release_payload::<NodeId>() {
-        if let Some((parent, index)) = tree.drop_target(*dragged, node.id) {
-            actions.push(Action::Move(*dragged, parent, index));
+        if let Some((parent, index)) = cx.tree.drop_target(*dragged, node.id) {
+            cx.actions.push(Action::Move(*dragged, parent, index));
         }
     }
-    label.context_menu(|ui| context_menu(ui, state, node, actions));
+    let mut actions = std::mem::take(&mut cx.actions);
+    response.context_menu(|ui| context_menu(ui, state, node, &mut actions));
+    cx.actions = actions;
 }
 
-/// Menu contextuel d'une page, d'une sous-matière ou d'un cahier.
+/// Menu contextuel d'une page, d'un dossier ou d'un cahier.
 pub fn context_menu(ui: &mut Ui, state: &mut SidebarState, node: &Node, actions: &mut Vec<Action>) {
     let create = |ui: &mut Ui, actions: &mut Vec<Action>, kind: NodeKind, label: &str| {
         if ui.button(label).clicked() {

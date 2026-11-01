@@ -3,6 +3,56 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le projet suit le
 [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [1.0.0] — « l'encre d'abord »
+
+Nouvelle interface, d'après les maquettes de `docs/refonte-ux`. Aucune fonction n'a été retirée : seule
+leur présentation change.
+
+### Apparence
+- Palette « l'encre d'abord » : encre bleue `#2340C4`, safran pour la mise en avant, gris bleutés ;
+  thème sombre repensé. Huit couleurs de couverture (Encre, Nuit, Brique, Safran, Sauge, Prune, Lagon,
+  Kraft), texte choisi d'après le contraste (au moins 4,5:1) ; les anciennes couleurs restent affichées
+  telles quelles.
+- Polices **Instrument Sans** (interface) et **Bricolage Grotesque** (titres), sous licence OFL,
+  intégrées au programme (`assets/fonts`).
+- Icônes reprises des tracés des maquettes (lecteur de tracés SVG intégré), trait de 1,8 px à bouts
+  ronds ; cibles cliquables d'au moins 40 px (44 px dans le dock).
+
+### Bibliothèque
+- Barre latérale : recherche, Accueil, Récents, Favoris, Corbeille, matières avec leur nombre de
+  cahiers, Réglages et thème.
+- Accueil : date et salutation, **Reprendre là où vous étiez** (miniature réelle de la dernière page
+  modifiée), **Note rapide** (Ctrl N), zone de dépôt de PDF (glisser-déposer sur la fenêtre), pages
+  récentes, couvertures des cahiers filtrables par matière (nombre de pages, date de modification).
+- Cahiers favoris ; corbeille affichée dans la bibliothèque.
+- Feuille **Nouveau cahier** avec aperçu en direct : titre, matière, couverture et **papier**, qui
+  devient le fond des nouvelles pages du cahier.
+
+### Éditeur
+- Barre du haut : retour, sommaire, chemin Matière / Cahier / Page, « ✓ Enregistré », annuler,
+  rétablir, recherche, mode concentration, menu « … » (anciens menus Fichier et Affichage), Exporter
+  (page ou cahier).
+- Sommaire avec miniatures des pages, dossiers repliables, vue **Aperçu** en grille, boutons « + Page »
+  et « + Dossier » ; glisser-déposer et menus contextuels conservés.
+- Page centrée sur un bureau à points, avec ombre portée ; pastille de zoom « − 100 % + ».
+- **Dock d'outils flottant** (stylo, surligneur, gomme, lasso, texte, pipette, instruments), **trousse**
+  de stylos préréglés enregistrée, interrupteur « Formes auto », **bulle de réglages** au second clic
+  (palette, HSV, hexadécimal, épaisseur, gomme, instruments).
+- Sélection au lasso : cadre en pointillés, barre flottante (couleur, dupliquer, couper, **Redresser
+  les formes**, supprimer).
+- **Mode concentration** (F11) : plein écran sombre, mini-dock ; les encres foncées sont éclaircies à
+  l'affichage sans modifier la page.
+- **Palette Ctrl K** : recherche sur les noms (sans tenir compte des accents), filtres, résultats
+  groupés avec miniatures, commandes des menus, navigation au clavier.
+- Raccourcis d'outils : P, H, E, L, T, I, R ; Ctrl E exporte la page en PDF.
+
+### Technique
+- `calame-storage` : `Store::page_timestamps` (date de modification des pages) ; nouvelles couleurs
+  par défaut des matières.
+- Réglages enregistrés : trousse (`pens`), cahiers favoris, papier de chaque cahier, cahier des notes
+  rapides.
+- Dépendance `chrono` pour l'heure locale.
+
 ## [0.2.0] — nouvelle interface
 
 ### Interface repensée dans l'esprit des interfaces Apple
