@@ -6,7 +6,7 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 > Le calame est le roseau taillé qui servait de plume dans l'Antiquité.
 
-**État : développement précoce (phase 4 sur 8).** Voir la feuille de route plus bas.
+**État : développement précoce (phase 5 sur 8).** Voir la feuille de route plus bas.
 
 ## Fonctionnalités
 
@@ -18,6 +18,8 @@ Disponible :
 - Lasso : déplacer, redimensionner, pivoter, copier, couper, coller, supprimer, recolorer
 - Zones de texte tapées au clavier (déplaçables, modifiables, recolorables)
 - Couleurs : palette, favoris, sélecteur HSV, saisie hexadécimale, pipette
+- Instruments : règle graduée, équerre 45° et 30°/60°, rapporteur, compas. On les déplace, tourne
+  et redimensionne ; un trait qui commence près d'un bord s'y cale (droite, ou arc de cercle)
 - Annuler / Rétablir illimités (Ctrl+Z, Ctrl+Maj+Z / Ctrl+Y)
 - Thèmes clair et sombre, interface en français
 - Bibliothèque matières > cahiers > sous-dossiers (imbriqués sans limite) > pages, avec nom, couleur
@@ -26,8 +28,7 @@ Disponible :
 - Recherche par nom dans l'arborescence
 - Stockage SQLite local ([format documenté](docs/format.md)), enregistrement automatique
 
-Prévu : rejet de la paume, gomme automatique du stylet, règle,
-équerre, rapporteur, compas, reconnaissance de formes locale, export PDF/PNG/SVG, import PDF,
+Prévu : rejet de la paume, gomme automatique du stylet, reconnaissance de formes locale, export PDF/PNG/SVG, import PDF,
 fonds de page, sauvegarde/restauration en zip.
 
 ## Compilation

@@ -14,6 +14,8 @@ pub enum Tool {
     Text,
     /// Pipette : prend la couleur de l'élément cliqué.
     Pipette,
+    /// Déplacer, tourner et régler règle, équerre, rapporteur et compas.
+    Instruments,
 }
 
 pub const PALETTE: [Color; 12] = [

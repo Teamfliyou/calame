@@ -2,6 +2,7 @@
 
 mod canvas;
 mod i18n;
+mod instruments_ui;
 mod library_ui;
 mod toolbar;
 mod tools;
@@ -211,7 +212,10 @@ impl CalameApp {
         if let Some(page) = self.report(loaded) {
             let history = self.histories.remove(&id).unwrap_or_default();
             self.current = Some(OpenPage::new(id, page, history));
+            // Les instruments suivent l'utilisateur d'une page à l'autre.
+            let instruments = std::mem::take(&mut self.canvas.instruments);
             self.canvas = Canvas::default();
+            self.canvas.instruments = instruments;
             self.canvas.sync_tool(self.tools.tool);
         }
     }
@@ -327,6 +331,8 @@ impl CalameApp {
             can_redo,
             has_selection: self.canvas.has_selection(),
             can_paste: !self.clipboard.is_empty(),
+            has_active_instrument: self.canvas.has_active_instrument(),
+            instrument_count: self.canvas.instrument_count(),
             dark: self.dark,
             breadcrumb: breadcrumb.as_deref(),
         };
@@ -366,6 +372,12 @@ impl CalameApp {
                         .recolor_selection(&mut o.page, &mut o.history, self.tools.color);
                 }
             }
+            Command::AddInstrument(kind) => {
+                self.canvas.add_instrument(kind);
+                self.tools.tool = Tool::Instruments;
+            }
+            Command::RemoveInstrument => self.canvas.remove_active_instrument(),
+            Command::ClearInstruments => self.canvas.clear_instruments(),
             Command::FavoritesChanged => {
                 let text = self.tools.favorites_to_string();
                 self.save_setting("favorites", &text);

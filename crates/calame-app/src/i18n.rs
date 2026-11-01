@@ -60,6 +60,15 @@ pub fn t(key: &str) -> &'static str {
         "recolor" => "Appliquer la couleur",
         "delete" => "Supprimer",
         "lasso-hint" => "Entoure des éléments pour les sélectionner.",
+        "tool-instruments" => "Instruments",
+        "ruler" => "Règle",
+        "set-square-45" => "Équerre 45°",
+        "set-square-60" => "Équerre 30°/60°",
+        "protractor" => "Rapporteur",
+        "compass" => "Compas",
+        "remove-instrument" => "Retirer",
+        "clear-instruments" => "Tout retirer",
+        "instruments-hint" => "Ajoute un instrument, puis trace le long de son bord avec le stylo.",
         _ => "?",
     }
 }

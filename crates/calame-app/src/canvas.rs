@@ -3,12 +3,14 @@
 use std::collections::{HashMap, HashSet};
 
 use calame_core::{
-    BrushKind, Color, History, Item, Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox,
+    snap, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item, Page, Point2,
+    Rect2, Similarity, Stroke, StrokePoint, TextBox,
 };
 use egui::epaint::{TextShape, Vertex};
 use egui::{Color32, FontId, Mesh, Painter, Pos2, Rect, Sense, Shape, Vec2};
 use uuid::Uuid;
 
+use crate::instruments_ui;
 use crate::tools::{Tool, ToolSettings};
 
 /// Vue sur la page infinie : `offset` est le point de page affiché au coin haut-gauche.
@@ -50,10 +52,22 @@ enum TransformOp {
     Rotate { pivot: Point2, start_angle: f32 },
 }
 
+enum InstrumentOp {
+    Move { last: Point2 },
+    Handle(Handle),
+}
+
 enum Gesture {
     None,
     Draw {
         stroke: Stroke,
+        /// Bord d'instrument sur lequel le trait est guidé, s'il a commencé à son contact.
+        lock: Option<Edge>,
+        source: Source,
+    },
+    Instrument {
+        index: usize,
+        op: InstrumentOp,
         source: Source,
     },
     EraseStroke {
@@ -86,6 +100,7 @@ impl Gesture {
             | Self::EraseStroke { source, .. }
             | Self::EraseArea { source, .. }
             | Self::Lasso { source, .. }
+            | Self::Instrument { source, .. }
             | Self::Transform { source, .. } => Some(*source),
         }
     }
@@ -124,6 +139,11 @@ pub struct Canvas {
     selection: HashSet<Uuid>,
     text_edit: Option<TextEdit>,
     last_tool: Tool,
+    /// Règle, équerre, rapporteur et compas posés sur la page (non enregistrés avec elle).
+    pub instruments: Vec<Instrument>,
+    active_instrument: Option<usize>,
+    /// Centre de la zone visible, en coordonnées de page : là où apparaissent les nouveaux instruments.
+    viewport_center: Point2,
 }
 
 impl Default for Canvas {
@@ -134,6 +154,9 @@ impl Default for Canvas {
             selection: HashSet::new(),
             text_edit: None,
             last_tool: Tool::Pen,
+            instruments: Vec::new(),
+            active_instrument: None,
+            viewport_center: Point2::default(),
         }
     }
 }
@@ -145,6 +168,8 @@ const HANDLE_RADIUS: f32 = 12.0;
 const ROTATE_HANDLE_OFFSET: f32 = 28.0;
 /// Décalage d'un collage par rapport à l'original, en unités de page.
 const PASTE_OFFSET: f32 = 24.0;
+/// Distance à partir de laquelle un trait commençant près d'un bord s'y accroche, en pixels d'écran.
+const SNAP_PX: f32 = 16.0;
 
 fn color32(c: Color) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
@@ -158,6 +183,33 @@ impl Canvas {
     /// Informe le canevas d'un changement d'outil voulu par l'application : la sélection est conservée.
     pub fn sync_tool(&mut self, tool: Tool) {
         self.last_tool = tool;
+    }
+
+    pub fn add_instrument(&mut self, kind: InstrumentKind) {
+        self.instruments
+            .push(Instrument::new(kind, self.viewport_center));
+        self.active_instrument = Some(self.instruments.len() - 1);
+    }
+
+    pub fn remove_active_instrument(&mut self) {
+        if let Some(i) = self.active_instrument.take() {
+            if i < self.instruments.len() {
+                self.instruments.remove(i);
+            }
+        }
+    }
+
+    pub fn clear_instruments(&mut self) {
+        self.instruments.clear();
+        self.active_instrument = None;
+    }
+
+    pub fn instrument_count(&self) -> usize {
+        self.instruments.len()
+    }
+
+    pub fn has_active_instrument(&self) -> bool {
+        self.active_instrument.is_some()
     }
 
     pub fn clear_selection(&mut self) {
@@ -220,6 +272,7 @@ impl Canvas {
         let origin = rect.min;
 
         self.navigate(ui, &response, origin);
+        self.viewport_center = self.view.to_page(origin, rect.center());
 
         let mut cx = Cx {
             page,
@@ -243,7 +296,7 @@ impl Canvas {
         if response.hovered() {
             ui.ctx().set_cursor_icon(match cx.tools.tool {
                 Tool::Text => egui::CursorIcon::Text,
-                Tool::Lasso => egui::CursorIcon::Default,
+                Tool::Lasso | Tool::Instruments => egui::CursorIcon::Default,
                 Tool::EraserStroke | Tool::EraserArea => egui::CursorIcon::None,
                 _ => egui::CursorIcon::Crosshair,
             });
@@ -348,13 +401,19 @@ impl Canvas {
             Tool::Pen | Tool::Highlighter => {
                 self.selection.clear();
                 if let Some(brush) = cx.tools.brush() {
+                    // Un trait qui commence au contact d'un instrument suit son bord.
+                    let lock = snap(&self.instruments, p, SNAP_PX / self.view.zoom);
                     let mut stroke = Stroke::new(brush);
                     stroke.push(StrokePoint {
-                        pos: p,
+                        pos: lock.map_or(p, |edge| edge.project(p)),
                         pressure,
                         tilt: None,
                     });
-                    self.gesture = Gesture::Draw { stroke, source };
+                    self.gesture = Gesture::Draw {
+                        stroke,
+                        lock,
+                        source,
+                    };
                 }
             }
             Tool::EraserStroke => {
@@ -376,6 +435,7 @@ impl Canvas {
                 self.on_move(pos, pressure, origin, cx);
             }
             Tool::Lasso => self.lasso_down(source, pos, origin, cx),
+            Tool::Instruments => self.instrument_down(source, pos, origin),
             Tool::Text => {
                 self.selection.clear();
                 self.text_down(p, cx);
@@ -387,6 +447,43 @@ impl Canvas {
                     cx.tools.tool = cx.tools.previous;
                 }
             }
+        }
+    }
+
+    fn instrument_down(&mut self, source: Source, pos: Pos2, origin: Pos2) {
+        let view = self.view;
+        let p = view.to_page(origin, pos);
+        if let Some(index) = self.active_instrument {
+            let handle = self.instruments.get(index).and_then(|instrument| {
+                instrument
+                    .handles()
+                    .into_iter()
+                    .find(|(_, at)| pos.distance(view.to_screen(origin, *at)) <= HANDLE_RADIUS)
+                    .map(|(handle, _)| handle)
+            });
+            if let Some(handle) = handle {
+                self.gesture = Gesture::Instrument {
+                    index,
+                    op: InstrumentOp::Handle(handle),
+                    source,
+                };
+                return;
+            }
+        }
+        match self.instruments.iter().rposition(|i| i.contains(p)) {
+            Some(i) => {
+                // L'instrument saisi passe au premier plan.
+                let instrument = self.instruments.remove(i);
+                self.instruments.push(instrument);
+                let top = self.instruments.len() - 1;
+                self.active_instrument = Some(top);
+                self.gesture = Gesture::Instrument {
+                    index: top,
+                    op: InstrumentOp::Move { last: p },
+                    source,
+                };
+            }
+            None => self.active_instrument = None,
         }
     }
 
@@ -467,20 +564,38 @@ impl Canvas {
         let radius = cx.tools.eraser_size * 0.5;
         match &mut self.gesture {
             Gesture::None => {}
-            Gesture::Draw { stroke, .. } => {
-                // Ignore les points quasi identiques pour garder des tracés légers.
-                if stroke
-                    .points
-                    .last()
-                    .is_some_and(|last| last.pos.distance(p) < 0.5 / view.zoom)
-                {
-                    return;
+            Gesture::Draw { stroke, lock, .. } => {
+                let previous = stroke.points.last().map(|last| last.pos);
+                let next = match lock {
+                    Some(edge) => edge.extend(previous, p),
+                    None => vec![p],
+                };
+                for q in next {
+                    // Ignore les points quasi identiques pour garder des tracés légers.
+                    if stroke
+                        .points
+                        .last()
+                        .is_some_and(|last| last.pos.distance(q) < 0.5 / view.zoom)
+                    {
+                        continue;
+                    }
+                    stroke.push(StrokePoint {
+                        pos: q,
+                        pressure,
+                        tilt: None,
+                    });
                 }
-                stroke.push(StrokePoint {
-                    pos: p,
-                    pressure,
-                    tilt: None,
-                });
+            }
+            Gesture::Instrument { index, op, .. } => {
+                if let Some(instrument) = self.instruments.get_mut(*index) {
+                    match op {
+                        InstrumentOp::Move { last } => {
+                            instrument.translate(p.x - last.x, p.y - last.y);
+                            *last = p;
+                        }
+                        InstrumentOp::Handle(handle) => instrument.drag_handle(*handle, p),
+                    }
+                }
             }
             Gesture::EraseStroke { hits, last, .. } => {
                 for q in sweep(*last, p, radius * 0.5) {
@@ -526,7 +641,7 @@ impl Canvas {
 
     fn on_up(&mut self, cx: &mut Cx<'_>) {
         match std::mem::replace(&mut self.gesture, Gesture::None) {
-            Gesture::None => {}
+            Gesture::None | Gesture::Instrument { .. } => {}
             Gesture::Draw { stroke, .. } => cx.history.add_item(cx.page, Item::Stroke(stroke)),
             Gesture::EraseStroke { hits, .. } => {
                 let ids: Vec<Uuid> = hits.into_iter().collect();
@@ -684,6 +799,31 @@ impl Canvas {
                 origin,
                 if ghost { 0.25 } else { 1.0 },
             );
+        }
+
+        let to_screen = |p: Point2| view.to_screen(origin, p);
+        instruments_ui::paint(
+            painter,
+            &self.instruments,
+            self.active_instrument,
+            cx.tools.tool == Tool::Instruments,
+            &to_screen,
+            view.zoom,
+        );
+        // Aide à l'accrochage : un repère sur le bord où le trait s'accrocherait.
+        if matches!(cx.tools.tool, Tool::Pen | Tool::Highlighter)
+            && matches!(self.gesture, Gesture::None)
+        {
+            if let Some(hover) = response.hover_pos() {
+                let p = view.to_page(origin, hover);
+                if let Some(edge) = snap(&self.instruments, p, SNAP_PX / view.zoom) {
+                    painter.circle_stroke(
+                        to_screen(edge.project(p)),
+                        6.0,
+                        egui::Stroke::new(2.0, Color32::from_rgb(240, 150, 40)),
+                    );
+                }
+            }
         }
 
         match &self.gesture {

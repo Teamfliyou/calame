@@ -1,6 +1,6 @@
 //! Barre d'outils : outils, couleurs, épaisseurs et actions sur la sélection.
 
-use calame_core::Color;
+use calame_core::{Color, InstrumentKind};
 use egui::{Color32, Sense, Stroke, Vec2};
 
 use crate::i18n::t;
@@ -21,6 +21,9 @@ pub enum Command {
     Recolor,
     /// Les favoris ont changé : à enregistrer.
     FavoritesChanged,
+    AddInstrument(InstrumentKind),
+    RemoveInstrument,
+    ClearInstruments,
 }
 
 pub struct ToolbarState<'a> {
@@ -28,11 +31,13 @@ pub struct ToolbarState<'a> {
     pub can_redo: bool,
     pub has_selection: bool,
     pub can_paste: bool,
+    pub has_active_instrument: bool,
+    pub instrument_count: usize,
     pub dark: bool,
     pub breadcrumb: Option<&'a str>,
 }
 
-const TOOLS: [(Tool, &str); 7] = [
+const TOOLS: [(Tool, &str); 8] = [
     (Tool::Pen, "tool-pen"),
     (Tool::Highlighter, "tool-highlighter"),
     (Tool::EraserStroke, "tool-eraser-stroke"),
@@ -40,6 +45,7 @@ const TOOLS: [(Tool, &str); 7] = [
     (Tool::Lasso, "tool-lasso"),
     (Tool::Text, "tool-text"),
     (Tool::Pipette, "tool-pipette"),
+    (Tool::Instruments, "tool-instruments"),
 ];
 
 pub fn show(ui: &mut egui::Ui, tools: &mut ToolSettings, state: &ToolbarState<'_>) -> Vec<Command> {
@@ -196,6 +202,7 @@ fn options_row(
             ui.weak(t("pipette-hint"));
         }
         Tool::Lasso => lasso_actions(ui, state, commands),
+        Tool::Instruments => instrument_actions(ui, state, commands),
     });
 }
 
@@ -215,5 +222,43 @@ fn lasso_actions(ui: &mut egui::Ui, state: &ToolbarState<'_>, commands: &mut Vec
     }
     if !sel {
         ui.weak(t("lasso-hint"));
+    }
+}
+
+const INSTRUMENT_BUTTONS: [(InstrumentKind, &str); 5] = [
+    (InstrumentKind::Ruler, "ruler"),
+    (InstrumentKind::SetSquare45, "set-square-45"),
+    (InstrumentKind::SetSquare60, "set-square-60"),
+    (InstrumentKind::Protractor, "protractor"),
+    (InstrumentKind::Compass, "compass"),
+];
+
+fn instrument_actions(ui: &mut egui::Ui, state: &ToolbarState<'_>, commands: &mut Vec<Command>) {
+    for (kind, key) in INSTRUMENT_BUTTONS {
+        if ui.button(format!("+ {}", t(key))).clicked() {
+            commands.push(Command::AddInstrument(kind));
+        }
+    }
+    ui.separator();
+    if ui
+        .add_enabled(
+            state.has_active_instrument,
+            egui::Button::new(t("remove-instrument")),
+        )
+        .clicked()
+    {
+        commands.push(Command::RemoveInstrument);
+    }
+    if ui
+        .add_enabled(
+            state.instrument_count > 0,
+            egui::Button::new(t("clear-instruments")),
+        )
+        .clicked()
+    {
+        commands.push(Command::ClearInstruments);
+    }
+    if state.instrument_count == 0 {
+        ui.weak(t("instruments-hint"));
     }
 }
