@@ -379,11 +379,11 @@ mod tests {
 
     #[test]
     fn width_previews_grow_with_the_width_and_stay_bounded() {
-        let mut previous = 0.0;
-        for w in PEN_WIDTHS.iter().chain(HIGHLIGHTER_WIDTHS.iter()) {
-            let d = dot_diameter(*w);
-            assert!((3.0..=20.0).contains(&d));
-            if *w <= 12.0 {
+        for presets in [&PEN_WIDTHS[..], &HIGHLIGHTER_WIDTHS[..]] {
+            let mut previous = 0.0;
+            for w in presets {
+                let d = dot_diameter(*w);
+                assert!((3.0..=20.0).contains(&d));
                 assert!(d >= previous);
                 previous = d;
             }
