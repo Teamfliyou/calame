@@ -14,11 +14,17 @@ enum Command {
 pub struct History {
     undo: Vec<Command>,
     redo: Vec<Command>,
+    revision: u64,
 }
 
 impl History {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Compteur incrémenté à chaque modification de la page (ajout, suppression, annuler, rétablir).
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub fn add_stroke(&mut self, page: &mut Page, stroke: Stroke) {
@@ -69,6 +75,7 @@ impl History {
             }
         }
         self.redo.push(cmd);
+        self.revision += 1;
         true
     }
 
@@ -87,12 +94,14 @@ impl History {
             }
         }
         self.undo.push(cmd);
+        self.revision += 1;
         true
     }
 
     fn record(&mut self, cmd: Command) {
         self.undo.push(cmd);
         self.redo.clear();
+        self.revision += 1;
     }
 }
 

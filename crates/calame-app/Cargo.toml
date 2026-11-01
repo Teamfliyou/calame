@@ -13,6 +13,8 @@ calame-input = { path = "../calame-input" }
 eframe = "0.37"
 anyhow = "1"
 egui = "0.37"
+calame-storage = { version = "0.1.0", path = "../calame-storage" }
+directories = "6.0.0"
 
 [lints]
 workspace = true

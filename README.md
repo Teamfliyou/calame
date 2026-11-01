@@ -6,7 +6,7 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 > Le calame est le roseau taillé qui servait de plume dans l'Antiquité.
 
-**État : développement précoce (phase 2 sur 8).** Voir la feuille de route plus bas.
+**État : développement précoce (phase 3 sur 8).** Voir la feuille de route plus bas.
 
 ## Fonctionnalités
 
@@ -16,8 +16,13 @@ Disponible :
 - Stylo sensible à la pression, lissage Catmull-Rom, surligneur
 - Annuler / Rétablir illimités (Ctrl+Z, Ctrl+Maj+Z / Ctrl+Y)
 - Thèmes clair et sombre, interface en français
+- Bibliothèque matières > cahiers > sous-dossiers (imbriqués sans limite) > pages, avec nom, couleur
+  et icône pour les matières
+- Créer, renommer, dupliquer, réordonner, déplacer par glisser-déposer, corbeille avec restauration
+- Recherche par nom dans l'arborescence
+- Stockage SQLite local ([format documenté](docs/format.md)), enregistrement automatique
 
-Prévu : matières > cahiers > sous-dossiers > pages avec stockage SQLite, gommes, lasso, règle,
+Prévu : gommes, lasso, règle,
 équerre, rapporteur, compas, reconnaissance de formes locale, export PDF/PNG/SVG, import PDF,
 fonds de page, sauvegarde/restauration en zip.
 
@@ -37,9 +42,9 @@ Sous Windows, il faut soit les *Build Tools* de Visual Studio (cible `msvc`), so
 
 | Crate | Rôle |
 |---|---|
-| `calame-core` | Modèle de données (traits, pages, historique), sans dépendance à l'interface |
+| `calame-core` | Modèle de données (traits, pages, historique, arborescence), sans dépendance à l'interface |
 | `calame-shapes` | Reconnaissance de formes *(à venir)* |
-| `calame-storage` | Stockage SQLite, sauvegarde automatique, zip *(à venir)* |
+| `calame-storage` | Stockage SQLite : hiérarchie, corbeille, contenu des pages *(zip de sauvegarde à venir)* |
 | `calame-export` | Export PDF/PNG/SVG, import PDF *(à venir)* |
 | `calame-input` | Entrée unifiée souris/tactile/stylet ; backends natifs *(à venir)* |
 | `calame-app` | Interface `egui`/`eframe`, canevas et outils |
