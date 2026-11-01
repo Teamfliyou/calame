@@ -1,6 +1,6 @@
 ; Installeur Windows de Calame, pour Inno Setup 6 (https://jrsoftware.org/isinfo.php).
 ; Construit par scripts\package-windows.ps1 ou par le workflow de publication :
-;   iscc /DAppVersion=1.0.0 packaging\windows\calame.iss
+;   iscc /DAppVersion=1.0.1 packaging\windows\calame.iss
 ; Prérequis : target\dist\calame.exe compilé (cargo build --profile dist -p calame-app).
 
 #ifndef AppVersion

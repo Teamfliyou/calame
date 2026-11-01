@@ -14,11 +14,11 @@ eframe = "0.37"
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 egui = "0.37"
-calame-storage = { version = "1.0.0", path = "../calame-storage" }
+calame-storage = { version = "1.0.1", path = "../calame-storage" }
 directories = "6.0.0"
 uuid = "1.20.0"
-calame-shapes = { version = "1.0.0", path = "../calame-shapes" }
-calame-export = { version = "1.0.0", path = "../calame-export" }
+calame-shapes = { version = "1.0.1", path = "../calame-shapes" }
+calame-export = { version = "1.0.1", path = "../calame-export" }
 rfd = "0.17.2"
 image = { version = "0.25.6", default-features = false, features = ["png", "jpeg"] }
 

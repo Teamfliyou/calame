@@ -3,6 +3,12 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le projet suit le
 [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [1.0.1]
+
+### Corrigé
+- Dans la barre latérale d'un cahier, cliquer sur une page l'ouvre de nouveau (on pouvait seulement
+  la déplacer, sans pouvoir revenir à une page précédente).
+
 ## [1.0.0] — « l'encre d'abord »
 
 Nouvelle interface, d'après les maquettes de `docs/refonte-ux`. Aucune fonction n'a été retirée : seule

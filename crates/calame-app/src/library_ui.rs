@@ -373,7 +373,7 @@ fn folder_row(ui: &mut Ui, cx: &Ctx<'_, '_>, node: &Node, depth: usize) -> Respo
     let dark = ui.visuals().dark_mode;
     let open = is_open(ui.ctx(), node.id);
     let width = ui.available_width().max(80.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 36.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 36.0), Sense::click_and_drag());
     if ui.is_rect_visible(rect) {
         let highlighted = cx.target == node.id;
         let background = if highlighted || response.hovered() {
@@ -443,7 +443,7 @@ fn folder_row(ui: &mut Ui, cx: &Ctx<'_, '_>, node: &Node, depth: usize) -> Respo
 fn page_row(ui: &mut Ui, cx: &mut Ctx<'_, '_>, node: &Node, depth: usize) -> Response {
     let dark = ui.visuals().dark_mode;
     let width = ui.available_width().max(80.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 72.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 72.0), Sense::click_and_drag());
     if ui.is_rect_visible(rect) {
         let active = cx.selected == Some(node.id);
         let background = if active {
@@ -530,18 +530,19 @@ fn row(ui: &mut Ui, state: &mut SidebarState, cx: &mut Ctx<'_, '_>, node: &Node,
         return;
     }
 
-    let drag = ui.dnd_drag_source(egui::Id::unique(("calame-drag", node.id)), node.id, |ui| {
-        if node.kind == NodeKind::Page {
-            page_row(ui, cx, node, depth)
-        } else {
-            folder_row(ui, cx, node, depth)
-        }
-    });
-    let (label, response) = (drag.inner, drag.response);
+    // Une seule zone qui distingue clic (ouvrir) et glisser (déplacer) : une zone de
+    // glisser posée par-dessus la ligne capterait le clic et empêcherait d'ouvrir la page.
+    let response = if node.kind == NodeKind::Page {
+        page_row(ui, cx, node, depth)
+    } else {
+        folder_row(ui, cx, node, depth)
+    };
+    response.dnd_set_drag_payload(node.id);
     let name = node.name.clone();
-    label.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
 
-    if label
+    if response
+        .clone()
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .clicked()
     {
