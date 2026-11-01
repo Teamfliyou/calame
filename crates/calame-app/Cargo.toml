@@ -13,11 +13,11 @@ calame-input = { path = "../calame-input" }
 eframe = "0.37"
 anyhow = "1"
 egui = "0.37"
-calame-storage = { version = "0.1.0", path = "../calame-storage" }
+calame-storage = { version = "0.2.0", path = "../calame-storage" }
 directories = "6.0.0"
 uuid = "1.20.0"
-calame-shapes = { version = "0.1.0", path = "../calame-shapes" }
-calame-export = { version = "0.1.0", path = "../calame-export" }
+calame-shapes = { version = "0.2.0", path = "../calame-shapes" }
+calame-export = { version = "0.2.0", path = "../calame-export" }
 rfd = "0.17.2"
 image = { version = "0.25.6", default-features = false, features = ["png", "jpeg"] }
 

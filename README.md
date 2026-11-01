@@ -14,7 +14,7 @@ connexion. Voir les [limites connues](#limites-connues).
 ## Fonctionnalités
 
 **Notes**
-- Matières, cahiers, sous-dossiers imbriqués sans limite et pages ; nom, couleur et icône des matières.
+- Bibliothèque d'accueil (matières en étagères, cahiers en couvertures), sous-matières imbriquées sans limite et pages ; nom, couleur et pictogramme.
 - Créer, renommer, dupliquer, réordonner, glisser-déposer, corbeille avec restauration, recherche.
 - Enregistrement automatique ; sauvegarde et restauration complètes de la bibliothèque (zip).
 

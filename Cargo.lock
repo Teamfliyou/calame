@@ -589,7 +589,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "calame-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "calame-core",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "calame-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "calame-export"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.23.1",
  "calame-core",
@@ -630,21 +630,21 @@ dependencies = [
 
 [[package]]
 name = "calame-input"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "calame-core",
 ]
 
 [[package]]
 name = "calame-shapes"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "calame-core",
 ]
 
 [[package]]
 name = "calame-storage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "calame-core",
  "postcard",

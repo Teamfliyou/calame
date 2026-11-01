@@ -12,7 +12,8 @@ use crate::files::{
     ExportPage, Task, TaskResult,
 };
 use crate::i18n::t;
-use crate::CalameApp;
+use crate::toolbar::Command;
+use crate::{CalameApp, Screen};
 
 fn background_key(background: Background) -> &'static str {
     match background {
@@ -36,6 +37,10 @@ impl CalameApp {
         let mut restore = false;
         let mut import_image = false;
         let mut new_background = None;
+        let mut new_dark = None;
+        let mut toggle_sidebar = false;
+        let mut reset_view = false;
+        let in_notebook = matches!(self.screen, Screen::Notebook(_));
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(t("menu-file"), |ui| {
                 if ui.button(t("import-pdf")).clicked() {
@@ -86,7 +91,38 @@ impl CalameApp {
                     }
                 });
             });
+            ui.menu_button(t("menu-view"), |ui| {
+                let mut dark = self.dark;
+                if ui.checkbox(&mut dark, t("dark-theme")).changed() {
+                    new_dark = Some(dark);
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(in_notebook, egui::Button::new(t("toggle-sidebar")))
+                    .clicked()
+                {
+                    toggle_sidebar = true;
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(has_page, egui::Button::new(t("reset-view")))
+                    .clicked()
+                {
+                    reset_view = true;
+                    ui.close();
+                }
+            });
         });
+        if let Some(dark) = new_dark {
+            self.run(ui.ctx(), Command::SetDark(dark));
+        }
+        if toggle_sidebar {
+            self.run(ui.ctx(), Command::ToggleSidebar);
+        }
+        if reset_view {
+            self.run(ui.ctx(), Command::ResetView);
+        }
         if let Some(background) = new_background {
             self.set_background(ui.ctx(), background);
         }

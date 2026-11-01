@@ -225,6 +225,42 @@ impl LibraryTree {
         walk(self, None)
     }
 
+    /// Première page sous `root` (inclus), dans l'ordre de l'arborescence.
+    pub fn first_page_in(&self, root: NodeId) -> Option<NodeId> {
+        fn walk(tree: &LibraryTree, id: NodeId) -> Option<NodeId> {
+            let node = tree.get(id)?;
+            if node.kind == NodeKind::Page {
+                return Some(id);
+            }
+            tree.children(Some(id))
+                .into_iter()
+                .find_map(|child| walk(tree, child.id))
+        }
+        walk(self, root)
+    }
+
+    /// Cahier qui contient `id` (ou `id` lui-même si c'est un cahier).
+    pub fn notebook_of(&self, id: NodeId) -> Option<NodeId> {
+        self.path(id)
+            .iter()
+            .find(|n| n.kind == NodeKind::Notebook)
+            .map(|n| n.id)
+    }
+
+    /// Nombre de pages sous `id` (inclus).
+    pub fn page_count(&self, id: NodeId) -> usize {
+        let Some(node) = self.get(id) else {
+            return 0;
+        };
+        if node.kind == NodeKind::Page {
+            return 1;
+        }
+        self.children(Some(id))
+            .into_iter()
+            .map(|child| self.page_count(child.id))
+            .sum()
+    }
+
     /// Éléments dont le nom contient `query` (insensible à la casse), plus leurs ancêtres.
     pub fn matching(&self, query: &str) -> HashSet<NodeId> {
         let query = query.trim().to_lowercase();
@@ -337,6 +373,26 @@ mod tests {
         assert_eq!(tree.drop_target(nb_id, nb_id), None);
         assert_eq!(tree.drop_target(nb_id, fo_id), None);
         assert_eq!(tree.drop_target(p1_id, s1_id), None);
+    }
+
+    #[test]
+    fn notebook_helpers_find_pages_and_counts() {
+        let s = node(None, NodeKind::Subject, "S", 0);
+        let nb = node(Some(s.id), NodeKind::Notebook, "Cahier", 0);
+        let sub = node(Some(nb.id), NodeKind::Folder, "Sous-matière", 0);
+        let deep = node(Some(sub.id), NodeKind::Page, "Profonde", 0);
+        let top = node(Some(nb.id), NodeKind::Page, "Haute", 1);
+        let empty = node(Some(s.id), NodeKind::Notebook, "Vide", 1);
+        let (s_id, nb_id, deep_id, empty_id) = (s.id, nb.id, deep.id, empty.id);
+        let tree = LibraryTree::from_nodes(vec![s, nb, sub, deep, top, empty]);
+
+        assert_eq!(tree.first_page_in(nb_id), Some(deep_id));
+        assert_eq!(tree.first_page_in(empty_id), None);
+        assert_eq!(tree.notebook_of(deep_id), Some(nb_id));
+        assert_eq!(tree.notebook_of(s_id), None);
+        assert_eq!(tree.page_count(nb_id), 2);
+        assert_eq!(tree.page_count(s_id), 2);
+        assert_eq!(tree.page_count(empty_id), 0);
     }
 
     #[test]

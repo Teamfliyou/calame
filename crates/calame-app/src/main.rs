@@ -3,10 +3,13 @@
 mod canvas;
 mod file_ops;
 mod files;
+mod home_ui;
 mod i18n;
+mod icons;
 mod instruments_ui;
 mod library_ui;
 mod render_cache;
+mod theme;
 mod toolbar;
 mod tools;
 
@@ -19,6 +22,7 @@ use calame_core::{AssetId, Background, History, Item, LibraryTree, Node, NodeId,
 use calame_storage::Store;
 use canvas::{Canvas, View};
 use files::Task;
+use home_ui::HomeState;
 use library_ui::{Action, SidebarState};
 use toolbar::{Command, ToolbarState};
 use tools::{Tool, ToolSettings};
@@ -56,6 +60,13 @@ impl OpenPage {
     }
 }
 
+/// Écran affiché : la bibliothèque, ou l'intérieur d'un cahier.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Screen {
+    Library,
+    Notebook(NodeId),
+}
+
 struct CalameApp {
     store: Store,
     tree: LibraryTree,
@@ -69,6 +80,11 @@ struct CalameApp {
     clipboard: Vec<Item>,
     dark: bool,
     sidebar: SidebarState,
+    home: HomeState,
+    screen: Screen,
+    sidebar_visible: bool,
+    /// Dernière page ouverte dans chaque cahier, pour la retrouver en y revenant.
+    last_pages: HashMap<NodeId, NodeId>,
     error: Option<String>,
     /// Message de réussite (export terminé, import réussi), affiché dans la barre d'outils.
     status: Option<String>,
@@ -105,6 +121,10 @@ impl CalameApp {
             clipboard: Vec::new(),
             dark: false,
             sidebar: SidebarState::default(),
+            home: HomeState::default(),
+            screen: Screen::Library,
+            sidebar_visible: true,
+            last_pages: HashMap::new(),
             error: None,
             status: None,
             background: Background::Blank,
@@ -113,34 +133,7 @@ impl CalameApp {
         };
         app.load_settings(&cc.egui_ctx);
         app.refresh();
-        if app.tree.is_empty() {
-            app.create_welcome_content(&cc.egui_ctx);
-        }
-        if let Some(first) = app.tree.first_page() {
-            app.open_page(&cc.egui_ctx, first);
-        }
         Ok(app)
-    }
-
-    /// Première utilisation : une matière, un cahier et une page pour pouvoir écrire tout de suite.
-    fn create_welcome_content(&mut self, ctx: &egui::Context) {
-        let result = (|| -> calame_storage::Result<()> {
-            let subject =
-                self.store
-                    .create_node(None, NodeKind::Subject, i18n::t("welcome-subject"))?;
-            let notebook = self.store.create_node(
-                Some(subject.id),
-                NodeKind::Notebook,
-                i18n::t("welcome-notebook"),
-            )?;
-            self.store
-                .create_node(Some(notebook.id), NodeKind::Page, i18n::t("welcome-page"))?;
-            library_ui::expand(ctx, subject.id);
-            library_ui::expand(ctx, notebook.id);
-            Ok(())
-        })();
-        self.report(result);
-        self.refresh();
     }
 
     /// Affiche l'erreur éventuelle dans la barre d'outils et renvoie le résultat sinon.
@@ -169,6 +162,11 @@ impl CalameApp {
                 self.current = None;
             }
         }
+        if let Screen::Notebook(id) = self.screen {
+            if self.tree.get(id).is_none() {
+                self.screen = Screen::Library;
+            }
+        }
     }
 
     fn load_settings(&mut self, ctx: &egui::Context) {
@@ -188,11 +186,7 @@ impl CalameApp {
     }
 
     fn apply_theme(&self, ctx: &egui::Context) {
-        ctx.set_visuals(if self.dark {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        });
+        theme::apply(ctx, self.dark);
     }
 
     fn save_setting(&mut self, key: &str, value: &str) {
@@ -232,6 +226,9 @@ impl CalameApp {
         if let Some(page) = self.report(loaded) {
             let history = self.histories.remove(&id).unwrap_or_default();
             self.current = Some(OpenPage::new(id, page, history));
+            if let Some(notebook) = self.tree.notebook_of(id) {
+                self.last_pages.insert(notebook, id);
+            }
             self.load_background(ctx, id);
             // Les instruments suivent l'utilisateur d'une page à l'autre.
             let instruments = std::mem::take(&mut self.canvas.instruments);
@@ -239,6 +236,37 @@ impl CalameApp {
             self.canvas.instruments = instruments;
             self.canvas.sync_tool(self.tools.tool);
         }
+    }
+
+    /// Entre dans un cahier et rouvre sa dernière page (ou la première).
+    fn open_notebook(&mut self, ctx: &egui::Context, id: NodeId) {
+        if self.tree.get(id).is_none() {
+            return;
+        }
+        self.close_current();
+        self.screen = Screen::Notebook(id);
+        self.sidebar = SidebarState::default();
+        let remembered = self
+            .last_pages
+            .get(&id)
+            .copied()
+            .filter(|page| self.tree.is_within(*page, id));
+        if let Some(page) = remembered.or_else(|| self.tree.first_page_in(id)) {
+            self.open_page(ctx, page);
+        }
+    }
+
+    fn go_library(&mut self) {
+        self.close_current();
+        self.screen = Screen::Library;
+    }
+
+    /// Crée un cahier avec sa première page, pour pouvoir écrire tout de suite.
+    fn create_notebook_page(&mut self, notebook: NodeId) {
+        let created = self
+            .store
+            .create_node(Some(notebook), NodeKind::Page, i18n::t("welcome-page"));
+        self.report(created);
     }
 
     fn autosave(&mut self, ctx: &egui::Context) {
@@ -264,7 +292,33 @@ impl CalameApp {
         }
         for action in actions {
             match action {
-                Action::Select(id) => self.open_page(ctx, id),
+                Action::Select(id) => {
+                    // Les pages créées juste avant ne sont dans l'arbre qu'après une mise à jour.
+                    self.refresh();
+                    self.open_page(ctx, id);
+                }
+                Action::OpenNotebook(id) => {
+                    self.refresh();
+                    self.open_notebook(ctx, id);
+                }
+                Action::CreateWith {
+                    parent,
+                    kind,
+                    name,
+                    color,
+                    icon,
+                } => {
+                    let created = self.store.create_node(parent, kind, &name);
+                    if let Some(node) = self.report(created) {
+                        let styled = self.store.set_style(node.id, color, &icon);
+                        self.report(styled);
+                        if kind == NodeKind::Notebook {
+                            self.create_notebook_page(node.id);
+                            self.refresh();
+                            self.open_notebook(ctx, node.id);
+                        }
+                    }
+                }
                 Action::Export(id, format) => self.export_node(id, format),
                 Action::ImportPdf(parent) => self.import_pdf(parent),
                 Action::Create { parent, kind } => self.create(ctx, parent, kind),
@@ -338,14 +392,14 @@ impl CalameApp {
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        let breadcrumb = self.current.as_ref().map(|open| {
-            self.tree
-                .path(open.id)
-                .iter()
-                .map(|n| n.name.as_str())
-                .collect::<Vec<_>>()
-                .join(" › ")
-        });
+        let notebook = match self.screen {
+            Screen::Notebook(id) => self.tree.get(id),
+            Screen::Library => None,
+        };
+        let back_label = notebook
+            .and_then(|n| n.parent_id)
+            .and_then(|p| self.tree.get(p))
+            .map_or(i18n::t("library"), |subject| subject.name.as_str());
         let (can_undo, can_redo) = self.current.as_ref().map_or((false, false), |o| {
             (o.history.can_undo(), o.history.can_redo())
         });
@@ -356,8 +410,9 @@ impl CalameApp {
             can_paste: !self.clipboard.is_empty(),
             has_active_instrument: self.canvas.has_active_instrument(),
             instrument_count: self.canvas.instrument_count(),
-            dark: self.dark,
-            breadcrumb: breadcrumb.as_deref(),
+            sidebar_visible: self.sidebar_visible,
+            back_label,
+            notebook: notebook.map_or("", |n| n.name.as_str()),
         };
         for command in toolbar::show(ui, &mut self.tools, &state) {
             self.run(ui.ctx(), command);
@@ -378,6 +433,8 @@ impl CalameApp {
             Command::Undo => self.undo(),
             Command::Redo => self.redo(),
             Command::ResetView => self.canvas.view = View::default(),
+            Command::BackToLibrary => self.go_library(),
+            Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             Command::SetDark(dark) => {
                 self.dark = dark;
                 self.apply_theme(ctx);
@@ -513,22 +570,38 @@ impl CalameApp {
     }
 }
 
-impl eframe::App for CalameApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        self.shortcuts(&ctx);
-
-        let mut actions = Vec::new();
-        egui::Panel::left("library")
-            .default_size(260.0)
-            .resizable(true)
-            .show(ui, |ui| {
-                let selected = self.current.as_ref().map(|o| o.id);
-                actions =
-                    library_ui::show(ui, &mut self.sidebar, &self.tree, &self.trash, selected);
-            });
-        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+impl CalameApp {
+    /// Intérieur d'un cahier : barre d'outils, sommaire et page.
+    fn notebook_screen(&mut self, ui: &mut egui::Ui, id: NodeId, actions: &mut Vec<Action>) {
+        let dark = self.dark;
+        egui::Panel::top("toolbar")
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::surface(dark))
+                    .inner_margin(egui::Margin::symmetric(12, 6)),
+            )
+            .show(ui, |ui| self.toolbar(ui));
+        if self.sidebar_visible {
+            egui::Panel::left("library")
+                .default_size(264.0)
+                .size_range(210.0..=440.0)
+                .resizable(true)
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::grouped_background(dark))
+                        .inner_margin(egui::Margin::symmetric(10, 4)),
+                )
+                .show(ui, |ui| {
+                    let selected = self.current.as_ref().map(|o| o.id);
+                    actions.extend(library_ui::show(
+                        ui,
+                        &mut self.sidebar,
+                        &self.tree,
+                        id,
+                        selected,
+                    ));
+                });
+        }
         let backdrop = self.backdrop();
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -543,9 +616,52 @@ impl eframe::App for CalameApp {
                     );
                 }
                 None => {
-                    ui.centered_and_justified(|ui| ui.weak(i18n::t("no-page")));
+                    let top = ui.available_height() * 0.35;
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(top);
+                        ui.label(
+                            egui::RichText::new(i18n::t("no-page"))
+                                .color(theme::label_secondary(dark)),
+                        );
+                        ui.add_space(8.0);
+                        if icons::text_button(
+                            ui,
+                            Some(icons::Icon::PagePlus),
+                            i18n::t("new-page-big"),
+                            icons::ButtonStyle::Prominent,
+                            true,
+                        )
+                        .clicked()
+                        {
+                            actions.push(Action::Create {
+                                parent: Some(id),
+                                kind: NodeKind::Page,
+                            });
+                        }
+                    });
                 }
             });
+    }
+}
+
+impl eframe::App for CalameApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.shortcuts(&ctx);
+
+        let mut actions = Vec::new();
+        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
+        match self.screen {
+            Screen::Library => {
+                let background = theme::grouped_background(self.dark);
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().fill(background))
+                    .show(ui, |ui| {
+                        actions = home_ui::show(ui, &mut self.home, &self.tree, &self.trash);
+                    });
+            }
+            Screen::Notebook(id) => self.notebook_screen(ui, id, &mut actions),
+        }
 
         self.apply(&ctx, actions);
         self.autosave(&ctx);
@@ -586,7 +702,8 @@ fn main() -> anyhow::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Calame")
         .with_app_id("calame")
-        .with_inner_size([1200.0, 800.0]);
+        .with_inner_size([1200.0, 800.0])
+        .with_min_inner_size([900.0, 560.0]);
     if let Some(icon) = window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }

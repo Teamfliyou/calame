@@ -5,17 +5,31 @@ automatiquement sur votre ordinateur, sans compte ni connexion.
 
 ## Organiser ses notes
 
-Le panneau de gauche est la **bibliothèque**. Elle a quatre niveaux :
+Au lancement, Calame ouvre la **bibliothèque** : chaque **matière** (Maths, Histoire…) y est une
+étagère qui porte ses **cahiers**, présentés comme des couvertures.
 
-- **Matières** (Maths, Histoire…), avec un nom, une couleur et une icône ;
-- **Cahiers**, rangés dans une matière ;
-- **Sous-dossiers**, dans un cahier ou un autre sous-dossier, sans limite de profondeur ;
-- **Pages**, dans un cahier ou un sous-dossier.
+- **Nouvelle matière** (en haut à droite) ouvre une feuille où l'on choisit le nom, la couleur et le
+  pictogramme. **+ Cahier**, sur l'étagère d'une matière, ou la case « Nouveau cahier » créent un
+  cahier de la même façon ; il s'ouvre aussitôt avec sa première page.
+- Un clic sur une couverture ouvre le cahier. Clic droit sur une couverture (ou bouton « … » d'une
+  matière) : modifier, déplacer vers une autre matière, dupliquer, monter, descendre, importer un PDF,
+  exporter, mettre à la corbeille.
+- Le champ de recherche trouve matières, cahiers, sous-matières et pages ; la **corbeille** (icône en
+  haut) restaure ou supprime définitivement.
 
-Clic droit sur un élément : créer, renommer, dupliquer, monter ou descendre, exporter, mettre à la
-corbeille. « Style… » (matières) change la couleur et l'icône. On déplace un élément en le glissant
-sur un conteneur (il y entre) ou sur un autre élément (il se place juste avant). La **corbeille**, en
-bas du panneau, restaure ou supprime définitivement. Le champ de recherche filtre par nom.
+### Dans un cahier
+
+Le **sommaire**, à gauche, liste les pages et les **sous-matières** du cahier (un chapitre, un thème…).
+Les sous-matières s'imbriquent sans limite.
+
+- **Page** et **Sous-matière**, en bas du sommaire, ajoutent un élément. Le petit texte au-dessus
+  indique où : clique sur une sous-matière pour la choisir comme destination, sinon l'élément va dans
+  le dossier de la page ouverte, ou à la racine du cahier.
+- Clic droit sur un élément : nouvelle page ou sous-matière à l'intérieur, renommer, dupliquer,
+  monter ou descendre, importer un PDF, exporter, corbeille. On déplace un élément en le glissant sur
+  une sous-matière (il y entre) ou sur un autre élément (il se place juste avant).
+- La flèche « ‹ » à gauche de la barre d'outils revient à la bibliothèque ; l'icône à côté masque ou
+  affiche le sommaire.
 
 ## Écrire et dessiner
 
