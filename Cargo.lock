@@ -537,6 +537,7 @@ dependencies = [
  "anyhow",
  "calame-core",
  "calame-input",
+ "calame-shapes",
  "calame-storage",
  "directories",
  "eframe",

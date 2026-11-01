@@ -145,15 +145,40 @@ impl Stroke {
     }
 
     /// Lisse le tracé par une spline de Catmull-Rom (`subdivisions` points par segment).
+    ///
+    /// Les angles vifs (plus de 55° de virage) restent vifs : la spline ne les arrondit pas, ce
+    /// qui garde nets les coins d'un rectangle ou d'une flèche reconnus.
     pub fn smoothed(&self, subdivisions: usize) -> Vec<StrokePoint> {
         let n = self.points.len();
         if n < 3 || subdivisions < 2 {
             return self.points.clone();
         }
-        let at = |i: isize| self.points[i.clamp(0, n as isize - 1) as usize];
+        let pts = &self.points;
+        let is_corner = |i: usize| {
+            if i == 0 || i + 1 >= n {
+                return false;
+            }
+            let (a, b, c) = (pts[i - 1].pos, pts[i].pos, pts[i + 1].pos);
+            let (v1, v2) = ((b.x - a.x, b.y - a.y), (c.x - b.x, c.y - b.y));
+            let (l1, l2) = (v1.0.hypot(v1.1), v2.0.hypot(v2.1));
+            l1 > f32::EPSILON
+                && l2 > f32::EPSILON
+                && (v1.0 * v2.0 + v1.1 * v2.1) / (l1 * l2) < CORNER_COS
+        };
         let mut out = Vec::with_capacity((n - 1) * subdivisions + 1);
-        for i in 0..n as isize - 1 {
-            let (p0, p1, p2, p3) = (at(i - 1), at(i), at(i + 1), at(i + 2));
+        for i in 0..n - 1 {
+            let (p1, p2) = (pts[i], pts[i + 1]);
+            // Aux extrémités et aux coins, le voisin manquant est remplacé par le point lui-même.
+            let p0 = if i >= 1 && !is_corner(i) {
+                pts[i - 1]
+            } else {
+                p1
+            };
+            let p3 = if i + 2 < n && !is_corner(i + 1) {
+                pts[i + 2]
+            } else {
+                p2
+            };
             for s in 0..subdivisions {
                 let t = s as f32 / subdivisions as f32;
                 out.push(StrokePoint {
@@ -166,10 +191,13 @@ impl Stroke {
                 });
             }
         }
-        out.push(at(n as isize - 1));
+        out.push(pts[n - 1]);
         out
     }
 }
+
+/// Cosinus de l'angle de virage au-delà duquel un point est un coin (55°).
+const CORNER_COS: f32 = 0.573_576_4;
 
 fn catmull_rom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
     let t2 = t * t;
@@ -270,5 +298,45 @@ mod tests {
         assert_eq!(t.points[0].pos, Point2::new(2.0, 2.0));
         assert_eq!(t.brush.width, s.brush.width * 2.0);
         assert_eq!(t.id, s.id);
+    }
+
+    #[test]
+    fn sharp_corners_are_not_rounded_off() {
+        let mut s = Stroke::new(Brush::default());
+        for (x, y) in [
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+            (0.0, 0.0),
+        ] {
+            s.push(pt(x, y));
+        }
+        // Sans traitement des coins, la spline déborde du carré ; ici elle suit ses côtés.
+        for p in s.smoothed(8) {
+            assert!(p.pos.x >= -1e-4 && p.pos.x <= 10.0001, "x = {}", p.pos.x);
+            assert!(p.pos.y >= -1e-4 && p.pos.y <= 10.0001, "y = {}", p.pos.y);
+        }
+    }
+
+    #[test]
+    fn gentle_curves_are_still_smoothed() {
+        let mut s = Stroke::new(Brush::default());
+        for (x, y) in [
+            (0.0, 0.0),
+            (10.0, 4.0),
+            (20.0, 5.0),
+            (30.0, 4.0),
+            (40.0, 0.0),
+        ] {
+            s.push(pt(x, y));
+        }
+        // Le virage reste doux : la spline s'écarte de la corde (milieu du 2e segment : y = 4,5).
+        let out = s.smoothed(8);
+        assert!(
+            (out[8 + 4].pos.y - 4.5).abs() > 0.2,
+            "y = {}",
+            out[8 + 4].pos.y
+        );
     }
 }

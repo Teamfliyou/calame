@@ -21,6 +21,8 @@ pub enum Command {
     Recolor,
     /// Les favoris ont changé : à enregistrer.
     FavoritesChanged,
+    /// La reconnaissance automatique de formes a été activée ou désactivée : à enregistrer.
+    ShapesChanged,
     AddInstrument(InstrumentKind),
     RemoveInstrument,
     ClearInstruments,
@@ -70,6 +72,15 @@ fn tools_row(
                 }
                 tools.tool = tool;
             }
+        }
+        ui.separator();
+        if ui
+            .selectable_label(tools.shape_recognition, t("shape-recognition"))
+            .on_hover_text(t("shape-recognition-hint"))
+            .clicked()
+        {
+            tools.shape_recognition = !tools.shape_recognition;
+            commands.push(Command::ShapesChanged);
         }
         ui.separator();
         if ui

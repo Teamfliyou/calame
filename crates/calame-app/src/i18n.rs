@@ -69,6 +69,18 @@ pub fn t(key: &str) -> &'static str {
         "remove-instrument" => "Retirer",
         "clear-instruments" => "Tout retirer",
         "instruments-hint" => "Ajoute un instrument, puis trace le long de son bord avec le stylo.",
+        "shape-recognition" => "Formes automatiques",
+        "shape-recognition-hint" => "Redresse chaque trait en forme parfaite au relâchement. Désactivé : maintiens le stylet immobile en fin de trait.",
+        "shape-undo-hint" => "Ctrl+Z : trait d'origine",
+        "shape-line" => "Droite",
+        "shape-circle" => "Cercle",
+        "shape-ellipse" => "Ellipse",
+        "shape-rectangle" => "Rectangle",
+        "shape-square" => "Carré",
+        "shape-triangle" => "Triangle",
+        "shape-arrow" => "Flèche",
+        "shape-polygon" => "Polygone",
+        "shape-curve" => "Courbe lissée",
         _ => "?",
     }
 }

@@ -42,4 +42,4 @@ réécrites au format 2 au prochain enregistrement.
 ## Table `settings` : les réglages
 
 Paires clé/valeur en texte (`favorites` : couleurs `#rrggbb` séparées par des virgules ;
-`dark` : `1` ou `0`). Ajoutée par le schéma 2.
+`dark` : `1` ou `0` ; `shapes` : `1` si la reconnaissance automatique de formes est active). Ajoutée par le schéma 2.

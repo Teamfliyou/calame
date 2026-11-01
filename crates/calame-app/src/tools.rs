@@ -50,6 +50,8 @@ pub struct ToolSettings {
     pub eraser_size: f32,
     pub text_size: f32,
     pub favorites: Vec<Color>,
+    /// Reconnaît chaque trait au relâchement (sinon : seulement après un maintien immobile).
+    pub shape_recognition: bool,
     /// Contenu du champ de saisie hexadécimale.
     pub hex: String,
 }
@@ -65,6 +67,7 @@ impl Default for ToolSettings {
             eraser_size: 16.0,
             text_size: 20.0,
             favorites: Vec::new(),
+            shape_recognition: false,
             hex: Color::BLACK.to_hex(),
         }
     }

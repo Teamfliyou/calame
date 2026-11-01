@@ -1,11 +1,13 @@
 //! Canevas vectoriel : zoom, déplacement, outils de dessin, gommes, lasso, texte et pipette.
 
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use calame_core::{
     snap, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item, Page, Point2,
     Rect2, Similarity, Stroke, StrokePoint, TextBox,
 };
+use calame_shapes::{recognize_stroke, Recognized, ShapeKind};
 use egui::epaint::{TextShape, Vertex};
 use egui::{Color32, FontId, Mesh, Painter, Pos2, Rect, Sense, Shape, Vec2};
 use uuid::Uuid;
@@ -63,6 +65,11 @@ enum Gesture {
         stroke: Stroke,
         /// Bord d'instrument sur lequel le trait est guidé, s'il a commencé à son contact.
         lock: Option<Edge>,
+        /// Dernier point où le stylet a réellement bougé, et quand : sert à détecter le maintien.
+        anchor: Point2,
+        last_move: Instant,
+        /// Forme reconnue pendant un maintien immobile, qui remplacera le trait au relâchement.
+        snapped: Option<Recognized>,
         source: Source,
     },
     Instrument {
@@ -144,6 +151,8 @@ pub struct Canvas {
     active_instrument: Option<usize>,
     /// Centre de la zone visible, en coordonnées de page : là où apparaissent les nouveaux instruments.
     viewport_center: Point2,
+    /// Dernière forme reconnue, affichée un instant pour indiquer comment l'annuler.
+    notice: Option<(ShapeKind, Instant)>,
 }
 
 impl Default for Canvas {
@@ -157,6 +166,7 @@ impl Default for Canvas {
             instruments: Vec::new(),
             active_instrument: None,
             viewport_center: Point2::default(),
+            notice: None,
         }
     }
 }
@@ -170,6 +180,11 @@ const ROTATE_HANDLE_OFFSET: f32 = 28.0;
 const PASTE_OFFSET: f32 = 24.0;
 /// Distance à partir de laquelle un trait commençant près d'un bord s'y accroche, en pixels d'écran.
 const SNAP_PX: f32 = 16.0;
+/// Durée d'immobilité du stylet, trait posé, qui déclenche la reconnaissance de forme.
+const HOLD_DELAY: Duration = Duration::from_millis(600);
+/// Déplacement toléré pendant le maintien, en pixels d'écran.
+const HOLD_SLOP_PX: f32 = 3.0;
+const NOTICE_DURATION: Duration = Duration::from_millis(2500);
 
 fn color32(c: Color) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
@@ -287,6 +302,7 @@ impl Canvas {
             self.selection.clear();
         }
         self.capture(ui, &response, rect, &mut cx);
+        self.detect_hold();
         self.paint(ui, &response, rect, &cx);
         self.text_editor(ui, origin, &mut cx);
 
@@ -300,6 +316,30 @@ impl Canvas {
                 Tool::EraserStroke | Tool::EraserArea => egui::CursorIcon::None,
                 _ => egui::CursorIcon::Crosshair,
             });
+        }
+    }
+
+    /// Reconnaît la forme d'un trait quand le stylet reste immobile, trait posé.
+    fn detect_hold(&mut self) {
+        let Gesture::Draw {
+            stroke,
+            lock,
+            last_move,
+            snapped,
+            ..
+        } = &mut self.gesture
+        else {
+            return;
+        };
+        if snapped.is_some() || lock.is_some() || last_move.elapsed() < HOLD_DELAY {
+            return;
+        }
+        // Un maintien est une demande explicite : on accepte aussi le simple lissage.
+        *snapped = recognize_stroke(stroke, true);
+        match snapped {
+            Some(shape) => self.notice = Some((shape.kind, Instant::now())),
+            // Rien de reconnaissable : on réessaiera après un nouveau délai d'immobilité.
+            None => *last_move = Instant::now(),
         }
     }
 
@@ -412,6 +452,9 @@ impl Canvas {
                     self.gesture = Gesture::Draw {
                         stroke,
                         lock,
+                        anchor: p,
+                        last_move: Instant::now(),
+                        snapped: None,
                         source,
                     };
                 }
@@ -564,7 +607,22 @@ impl Canvas {
         let radius = cx.tools.eraser_size * 0.5;
         match &mut self.gesture {
             Gesture::None => {}
-            Gesture::Draw { stroke, lock, .. } => {
+            Gesture::Draw {
+                stroke,
+                lock,
+                anchor,
+                last_move,
+                snapped,
+                ..
+            } => {
+                // Une forme déjà reconnue pendant le maintien fige le trait jusqu'au relâchement.
+                if snapped.is_some() {
+                    return;
+                }
+                if anchor.distance(p) > HOLD_SLOP_PX / view.zoom {
+                    *anchor = p;
+                    *last_move = Instant::now();
+                }
                 let previous = stroke.points.last().map(|last| last.pos);
                 let next = match lock {
                     Some(edge) => edge.extend(previous, p),
@@ -642,7 +700,30 @@ impl Canvas {
     fn on_up(&mut self, cx: &mut Cx<'_>) {
         match std::mem::replace(&mut self.gesture, Gesture::None) {
             Gesture::None | Gesture::Instrument { .. } => {}
-            Gesture::Draw { stroke, .. } => cx.history.add_item(cx.page, Item::Stroke(stroke)),
+            Gesture::Draw {
+                stroke,
+                lock,
+                snapped,
+                ..
+            } => {
+                // Avec « formes automatiques », chaque trait est reconnu au relâchement ; sinon
+                // seulement celui qu'un maintien a déjà reconnu. Le trait d'origine est ajouté
+                // d'abord, la correction ensuite : un seul « Annuler » le retrouve.
+                let corrected = snapped.or_else(|| {
+                    (cx.tools.shape_recognition && lock.is_none())
+                        .then(|| recognize_stroke(&stroke, false))
+                        .flatten()
+                });
+                let id = stroke.id;
+                cx.history.add_item(cx.page, Item::Stroke(stroke));
+                if let Some(shape) = corrected {
+                    self.notice = Some((shape.kind, Instant::now()));
+                    cx.history.replace_items(
+                        cx.page,
+                        HashMap::from([(id, vec![Item::Stroke(shape.stroke)])]),
+                    );
+                }
+            }
             Gesture::EraseStroke { hits, .. } => {
                 let ids: Vec<Uuid> = hits.into_iter().collect();
                 cx.history.remove_items(cx.page, &ids);
@@ -827,8 +908,11 @@ impl Canvas {
         }
 
         match &self.gesture {
-            Gesture::Draw { stroke, .. } => {
-                paint_stroke(painter, stroke, &stroke.smoothed(6), view, origin, 1.0);
+            Gesture::Draw {
+                stroke, snapped, ..
+            } => {
+                let shown = snapped.as_ref().map_or(stroke, |s| &s.stroke);
+                paint_stroke(painter, shown, &shown.smoothed(6), view, origin, 1.0);
             }
             Gesture::Lasso { points, .. } => {
                 let line: Vec<Pos2> = points.iter().map(|p| view.to_screen(origin, *p)).collect();
@@ -836,6 +920,7 @@ impl Canvas {
             }
             _ => {}
         }
+        self.paint_notice(ui, painter, rect);
         self.paint_selection(ui, painter, cx.page, transform, view, origin);
         if matches!(cx.tools.tool, Tool::EraserStroke | Tool::EraserArea) {
             if let Some(hover) = response.hover_pos() {
@@ -846,6 +931,30 @@ impl Canvas {
                 );
             }
         }
+    }
+
+    /// Message passager « Cercle », avec le moyen de revenir au trait d'origine.
+    fn paint_notice(&self, ui: &egui::Ui, painter: &Painter, rect: Rect) {
+        let Some((kind, at)) = self.notice else {
+            return;
+        };
+        let age = at.elapsed();
+        if age >= NOTICE_DURATION {
+            return;
+        }
+        ui.ctx().request_repaint_after(NOTICE_DURATION - age);
+        let text = format!(
+            "{} · {}",
+            crate::i18n::t(shape_label_key(kind)),
+            crate::i18n::t("shape-undo-hint")
+        );
+        let galley = painter.layout_no_wrap(text, FontId::proportional(14.0), Color32::WHITE);
+        let area = Rect::from_min_size(
+            rect.min + Vec2::new(14.0, 14.0),
+            galley.size() + Vec2::splat(16.0),
+        );
+        painter.rect_filled(area, 6.0, Color32::from_rgba_unmultiplied(30, 30, 40, 220));
+        painter.galley(area.min + Vec2::splat(8.0), galley, Color32::WHITE);
     }
 
     fn paint_selection(
@@ -885,6 +994,20 @@ impl Canvas {
         painter.line_segment([top, knob], stroke);
         painter.circle_filled(knob, 6.0, fill);
         painter.circle_stroke(knob, 6.0, stroke);
+    }
+}
+
+fn shape_label_key(kind: ShapeKind) -> &'static str {
+    match kind {
+        ShapeKind::Line => "shape-line",
+        ShapeKind::Circle => "shape-circle",
+        ShapeKind::Ellipse => "shape-ellipse",
+        ShapeKind::Rectangle => "shape-rectangle",
+        ShapeKind::Square => "shape-square",
+        ShapeKind::Triangle => "shape-triangle",
+        ShapeKind::Arrow => "shape-arrow",
+        ShapeKind::Polygon => "shape-polygon",
+        ShapeKind::Curve => "shape-curve",
     }
 }
 

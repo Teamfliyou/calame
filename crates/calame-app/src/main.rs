@@ -160,6 +160,10 @@ impl CalameApp {
         if let Some(Some(text)) = self.report(favorites) {
             self.tools.set_favorites_from_string(&text);
         }
+        let shapes = self.store.setting("shapes");
+        if let Some(Some(text)) = self.report(shapes) {
+            self.tools.shape_recognition = text == "1";
+        }
         let dark = self.store.setting("dark");
         if let Some(Some(text)) = self.report(dark) {
             self.dark = text == "1";
@@ -371,6 +375,14 @@ impl CalameApp {
                     self.canvas
                         .recolor_selection(&mut o.page, &mut o.history, self.tools.color);
                 }
+            }
+            Command::ShapesChanged => {
+                let value = if self.tools.shape_recognition {
+                    "1"
+                } else {
+                    "0"
+                };
+                self.save_setting("shapes", value);
             }
             Command::AddInstrument(kind) => {
                 self.canvas.add_instrument(kind);
