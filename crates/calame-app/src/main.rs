@@ -108,10 +108,20 @@ impl eframe::App for CalameApp {
 }
 
 fn main() -> anyhow::Result<()> {
+    let mut wgpu_options = eframe::WgpuConfiguration::default();
+    // Sous Windows, le choix automatique retient parfois Vulkan, dont certains pilotes plantent
+    // au démarrage : on préfère DX12, avec OpenGL en secours. `WGPU_BACKEND` reste prioritaire.
+    if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
+        if let eframe::egui_wgpu::WgpuSetup::CreateNew(create_new) = &mut wgpu_options.wgpu_setup {
+            create_new.instance_descriptor.backends =
+                eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL;
+        }
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Calame")
             .with_inner_size([1200.0, 800.0]),
+        wgpu_options,
         ..Default::default()
     };
     eframe::run_native(
