@@ -1,5 +1,6 @@
 //! Modèle de données de Calame, indépendant de l'interface.
 
+pub mod background;
 pub mod geometry;
 pub mod history;
 pub mod instruments;
@@ -8,6 +9,7 @@ pub mod library;
 pub mod page;
 pub mod stroke;
 
+pub use background::{AssetId, Background};
 pub use geometry::{Color, Point2, Rect2, Similarity};
 pub use history::History;
 pub use instruments::{

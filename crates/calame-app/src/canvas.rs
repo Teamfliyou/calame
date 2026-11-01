@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use calame_core::{
-    snap, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item, Page, Point2,
-    Rect2, Similarity, Stroke, StrokePoint, TextBox,
+    snap, Background, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item,
+    Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox, UNITS_PER_MM,
 };
 use calame_shapes::{recognize_stroke, Recognized, ShapeKind};
 use egui::epaint::{TextShape, Vertex};
@@ -280,6 +280,7 @@ impl Canvas {
         page: &mut Page,
         history: &mut History,
         tools: &mut ToolSettings,
+        backdrop: &Backdrop,
     ) {
         let rect = ui.available_rect_before_wrap();
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
@@ -303,7 +304,7 @@ impl Canvas {
         }
         self.capture(ui, &response, rect, &mut cx);
         self.detect_hold();
-        self.paint(ui, &response, rect, &cx);
+        self.paint(ui, &response, rect, &cx, backdrop);
         self.text_editor(ui, origin, &mut cx);
 
         if !matches!(self.gesture, Gesture::None) {
@@ -844,11 +845,18 @@ impl Canvas {
             .reduce(Rect2::union)
     }
 
-    fn paint(&self, ui: &egui::Ui, response: &egui::Response, rect: Rect, cx: &Cx<'_>) {
+    fn paint(
+        &self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        rect: Rect,
+        cx: &Cx<'_>,
+        backdrop: &Backdrop,
+    ) {
         let painter = cx.painter;
         let (view, origin) = (self.view, rect.min);
         painter.rect_filled(rect, 0.0, Color32::WHITE);
-        draw_grid(painter, rect, view);
+        draw_backdrop(painter, rect, view, backdrop);
 
         let transform = match &self.gesture {
             Gesture::Transform { current, .. } => Some(*current),
@@ -1063,28 +1071,41 @@ fn erase_area_at(
     pieces.extend(updates);
 }
 
-fn draw_grid(painter: &Painter, rect: Rect, view: View) {
-    let step = 32.0;
-    let color = Color32::from_gray(230);
-    let first_x = (view.offset.x / step).floor() * step;
-    let first_y = (view.offset.y / step).floor() * step;
-    let mut x = first_x;
-    while (x - view.offset.x) * view.zoom < rect.width() {
-        let sx = rect.min.x + (x - view.offset.x) * view.zoom;
-        painter.line_segment(
-            [Pos2::new(sx, rect.min.y), Pos2::new(sx, rect.max.y)],
-            (1.0, color),
+/// Fond de la page affichée : motif généré, ou image (page de PDF importée, par exemple).
+pub struct Backdrop {
+    pub background: Background,
+    /// Texture de l'image de fond et sa taille en unités de page, si le fond en est une.
+    pub image: Option<(egui::TextureId, Vec2)>,
+}
+
+fn draw_backdrop(painter: &Painter, rect: Rect, view: View, backdrop: &Backdrop) {
+    let to_screen = |p: Point2| view.to_screen(rect.min, p);
+    if let Some((texture, size)) = backdrop.image {
+        let image_rect = Rect::from_min_max(
+            to_screen(Point2::new(0.0, 0.0)),
+            to_screen(Point2::new(size.x, size.y)),
         );
-        x += step;
+        let full = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        painter.image(texture, image_rect, full, Color32::WHITE);
+        return;
     }
-    let mut y = first_y;
-    while (y - view.offset.y) * view.zoom < rect.height() {
-        let sy = rect.min.y + (y - view.offset.y) * view.zoom;
-        painter.line_segment(
-            [Pos2::new(rect.min.x, sy), Pos2::new(rect.max.x, sy)],
-            (1.0, color),
-        );
-        y += step;
+    // Un motif trop serré à l'écran n'est qu'un aplat de bruit : on ne le dessine pas.
+    if UNITS_PER_MM * 5.0 * view.zoom < 5.0 {
+        return;
+    }
+    let visible = Rect2 {
+        min: view.to_page(rect.min, rect.min),
+        max: view.to_page(rect.min, rect.max),
+    };
+    let pattern = backdrop.background.pattern(visible);
+    let color = color32(pattern.color);
+    let stroke = egui::Stroke::new(1.0, color);
+    for (a, b) in &pattern.lines {
+        painter.line_segment([to_screen(*a), to_screen(*b)], stroke);
+    }
+    let radius = (1.0 * view.zoom).clamp(0.8, 2.5);
+    for dot in &pattern.dots {
+        painter.circle_filled(to_screen(*dot), radius, color);
     }
 }
 

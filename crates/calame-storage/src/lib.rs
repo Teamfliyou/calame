@@ -7,13 +7,15 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use calame_core::library::check_placement;
-use calame_core::{Color, Item, LibraryError, Node, NodeId, NodeKind, Page, Stroke};
+use calame_core::{
+    AssetId, Background, Color, Item, LibraryError, Node, NodeId, NodeKind, Page, Stroke,
+};
 use rusqlite::types::Type;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 /// Version du codec des pages (`page_data.format`).
 ///
 /// 1 : traits seuls ; 2 : éléments (traits et textes).
@@ -55,11 +57,32 @@ pub enum StoreError {
     NotTrashed,
     #[error("format de page inconnu : {0}")]
     UnsupportedPageFormat(i64),
+    #[error("image de fond introuvable : {0}")]
+    AssetNotFound(AssetId),
     #[error("base créée par une version plus récente de Calame (schéma {0})")]
     UnsupportedVersion(i32),
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
+
+/// Image enregistrée (fond de page) ; `width` et `height` sont en unités de page.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Asset {
+    pub id: AssetId,
+    pub mime: String,
+    pub width: f32,
+    pub height: f32,
+    pub data: Vec<u8>,
+}
+
+/// Une page à importer : son image de fond et sa taille en unités de page.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportedPage {
+    pub mime: String,
+    pub width: f32,
+    pub height: f32,
+    pub data: Vec<u8>,
+}
 
 pub struct Store {
     conn: Connection,
@@ -116,6 +139,21 @@ impl Store {
                     value TEXT NOT NULL
                 );
                 PRAGMA user_version = 2;",
+            )?;
+        }
+        if version < 3 {
+            // Fond de chaque page, et images (ou pages de PDF rendues) qui peuvent le servir.
+            conn.execute_batch(
+                "ALTER TABLE nodes ADD COLUMN background TEXT NOT NULL DEFAULT 'blank';
+                CREATE TABLE assets (
+                    id TEXT PRIMARY KEY,
+                    mime TEXT NOT NULL,
+                    width REAL NOT NULL,
+                    height REAL NOT NULL,
+                    data BLOB NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                PRAGMA user_version = 3;",
             )?;
         }
         Ok(Self { conn })
@@ -341,7 +379,7 @@ impl Store {
         }
         self.conn
             .execute("DELETE FROM nodes WHERE id = ?1", [id.to_string()])?;
-        Ok(())
+        self.purge_unused_assets()
     }
 
     pub fn empty_trash(&self) -> Result<()> {
@@ -384,6 +422,108 @@ impl Store {
             params![id.to_string(), PAGE_FORMAT, bytes, now()],
         )?;
         Ok(())
+    }
+
+    // ---- Fonds de page et images ---------------------------------------------------------
+
+    pub fn background(&self, page: NodeId) -> Result<Background> {
+        let text: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT background FROM nodes WHERE id = ?1",
+                [page.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let text = text.ok_or(StoreError::NotFound(page))?;
+        // Un fond illisible (base d'une version future, par exemple) retombe sur une page unie.
+        Ok(Background::from_db(&text).unwrap_or_default())
+    }
+
+    pub fn set_background(&self, page: NodeId, background: Background) -> Result<()> {
+        if self.node(page)?.kind != NodeKind::Page {
+            return Err(StoreError::NotAPage);
+        }
+        if let Some(id) = background.image() {
+            self.asset(id)?;
+        }
+        self.conn.execute(
+            "UPDATE nodes SET background = ?2 WHERE id = ?1",
+            params![page.to_string(), background.to_db()],
+        )?;
+        self.purge_unused_assets()?;
+        Ok(())
+    }
+
+    /// Enregistre une image (PNG ou JPEG) ; `width` et `height` sont sa taille en unités de page.
+    pub fn add_asset(&self, mime: &str, width: f32, height: f32, data: &[u8]) -> Result<AssetId> {
+        let id = AssetId::new();
+        self.conn.execute(
+            "INSERT INTO assets (id, mime, width, height, data, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id.to_string(), mime, width, height, data, now()],
+        )?;
+        Ok(id)
+    }
+
+    pub fn asset(&self, id: AssetId) -> Result<Asset> {
+        self.conn
+            .query_row(
+                "SELECT mime, width, height, data FROM assets WHERE id = ?1",
+                [id.to_string()],
+                |r| {
+                    Ok(Asset {
+                        id,
+                        mime: r.get(0)?,
+                        width: r.get(1)?,
+                        height: r.get(2)?,
+                        data: r.get(3)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or(StoreError::AssetNotFound(id))
+    }
+
+    /// Supprime les images qu'aucune page n'utilise plus (y compris dans la corbeille).
+    fn purge_unused_assets(&self) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM assets WHERE 'asset:' || id NOT IN (SELECT background FROM nodes)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Importe un document : un cahier sous une matière, ou un sous-dossier ailleurs, avec une page
+    /// par élément de `pages`, chacune ayant son image pour fond. Tout ou rien.
+    pub fn import_document(
+        &self,
+        parent: NodeId,
+        name: &str,
+        pages: &[ImportedPage],
+    ) -> Result<Node> {
+        let container = match self.node(parent)?.kind {
+            NodeKind::Subject => NodeKind::Notebook,
+            _ => NodeKind::Folder,
+        };
+        self.conn.execute_batch("SAVEPOINT import_document")?;
+        let result = (|| -> Result<Node> {
+            let root = self.create_node(Some(parent), container, name)?;
+            for (i, page) in pages.iter().enumerate() {
+                let node =
+                    self.create_node(Some(root.id), NodeKind::Page, &format!("Page {}", i + 1))?;
+                let asset = self.add_asset(&page.mime, page.width, page.height, &page.data)?;
+                self.set_background(node.id, Background::Image(asset))?;
+            }
+            Ok(root)
+        })();
+        match &result {
+            Ok(_) => self.conn.execute_batch("RELEASE import_document")?,
+            Err(_) => self
+                .conn
+                .execute_batch("ROLLBACK TO import_document; RELEASE import_document")?,
+        }
+        result
     }
 
     // ---- Réglages ------------------------------------------------------------------------
@@ -475,8 +615,9 @@ fn copy_subtree(
     let new_id = NodeId::new();
     let name = format!("{}{}", node.name, suffix.unwrap_or(""));
     conn.execute(
-        "INSERT INTO nodes (id, parent_id, kind, name, color, icon, position, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO nodes (id, parent_id, kind, name, color, icon, position, created_at, background)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                 (SELECT background FROM nodes WHERE id = ?9))",
         params![
             new_id.to_string(),
             parent.map(|p| p.to_string()),
@@ -486,6 +627,7 @@ fn copy_subtree(
             node.icon,
             node.position,
             now(),
+            src.to_string(),
         ],
     )?;
     conn.execute(

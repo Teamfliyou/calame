@@ -4,11 +4,16 @@ use calame_core::{Color, LibraryTree, Node, NodeId, NodeKind};
 use egui::collapsing_header::CollapsingState;
 use egui::{Color32, RichText};
 
+use crate::files::ExportFormat;
 use crate::i18n::t;
 
 /// Ce que l'utilisateur a demandé dans le panneau ; appliqué ensuite par l'application.
 pub enum Action {
     Select(NodeId),
+    /// Exporter une page, un cahier, un sous-dossier ou une matière.
+    Export(NodeId, ExportFormat),
+    /// Importer un PDF dans une matière, un cahier ou un sous-dossier.
+    ImportPdf(NodeId),
     Create {
         parent: Option<NodeId>,
         kind: NodeKind,
@@ -258,6 +263,23 @@ fn context_menu(
         actions.push(Action::MoveBy(node.id, 1));
         ui.close();
     }
+    ui.separator();
+    if node.kind.is_container() && ui.button(t("import-pdf-here")).clicked() {
+        actions.push(Action::ImportPdf(node.id));
+        ui.close();
+    }
+    ui.menu_button(t("export"), |ui| {
+        for (format, key) in [
+            (ExportFormat::Pdf, "export-pdf"),
+            (ExportFormat::Png, "export-png"),
+            (ExportFormat::Svg, "export-svg"),
+        ] {
+            if ui.button(t(key)).clicked() {
+                actions.push(Action::Export(node.id, format));
+                ui.close();
+            }
+        }
+    });
     ui.separator();
     if ui.button(t("to-trash")).clicked() {
         actions.push(Action::Trash(node.id));

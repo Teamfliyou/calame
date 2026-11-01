@@ -1,6 +1,8 @@
 //! Calame : prise de notes manuscrites.
 
 mod canvas;
+mod file_ops;
+mod files;
 mod i18n;
 mod instruments_ui;
 mod library_ui;
@@ -12,9 +14,10 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context as _};
-use calame_core::{History, Item, LibraryTree, Node, NodeId, NodeKind, Page};
+use calame_core::{AssetId, Background, History, Item, LibraryTree, Node, NodeId, NodeKind, Page};
 use calame_storage::Store;
 use canvas::{Canvas, View};
+use files::Task;
 use library_ui::{Action, SidebarState};
 use toolbar::{Command, ToolbarState};
 use tools::{Tool, ToolSettings};
@@ -66,6 +69,14 @@ struct CalameApp {
     dark: bool,
     sidebar: SidebarState,
     error: Option<String>,
+    /// Message de réussite (export terminé, import réussi), affiché dans la barre d'outils.
+    status: Option<String>,
+    /// Fond de la page ouverte.
+    background: Background,
+    /// Textures des images de fond déjà chargées, avec leur taille en unités de page.
+    textures: HashMap<AssetId, (egui::TextureHandle, egui::Vec2)>,
+    /// Import ou export en cours dans un fil séparé.
+    task: Option<Task>,
 }
 
 fn database_path() -> PathBuf {
@@ -94,6 +105,10 @@ impl CalameApp {
             dark: false,
             sidebar: SidebarState::default(),
             error: None,
+            status: None,
+            background: Background::Blank,
+            textures: HashMap::new(),
+            task: None,
         };
         app.load_settings(&cc.egui_ctx);
         app.refresh();
@@ -101,7 +116,7 @@ impl CalameApp {
             app.create_welcome_content(&cc.egui_ctx);
         }
         if let Some(first) = app.tree.first_page() {
-            app.open_page(first);
+            app.open_page(&cc.egui_ctx, first);
         }
         Ok(app)
     }
@@ -207,7 +222,7 @@ impl CalameApp {
         }
     }
 
-    fn open_page(&mut self, id: NodeId) {
+    fn open_page(&mut self, ctx: &egui::Context, id: NodeId) {
         if self.current.as_ref().is_some_and(|o| o.id == id) {
             return;
         }
@@ -216,6 +231,7 @@ impl CalameApp {
         if let Some(page) = self.report(loaded) {
             let history = self.histories.remove(&id).unwrap_or_default();
             self.current = Some(OpenPage::new(id, page, history));
+            self.load_background(ctx, id);
             // Les instruments suivent l'utilisateur d'une page à l'autre.
             let instruments = std::mem::take(&mut self.canvas.instruments);
             self.canvas = Canvas::default();
@@ -247,7 +263,9 @@ impl CalameApp {
         }
         for action in actions {
             match action {
-                Action::Select(id) => self.open_page(id),
+                Action::Select(id) => self.open_page(ctx, id),
+                Action::Export(id, format) => self.export_node(id, format),
+                Action::ImportPdf(parent) => self.import_pdf(parent),
                 Action::Create { parent, kind } => self.create(ctx, parent, kind),
                 Action::Rename(id, name) => {
                     let r = self.store.rename(id, &name);
@@ -314,7 +332,7 @@ impl CalameApp {
         if kind == NodeKind::Page {
             // `refresh` n'a pas encore eu lieu : on ouvre la page après la mise à jour de l'arbre.
             self.refresh();
-            self.open_page(node.id);
+            self.open_page(ctx, node.id);
         }
     }
 
@@ -351,6 +369,7 @@ impl CalameApp {
                 }
             });
         }
+        self.status_line(ui);
     }
 
     fn run(&mut self, ctx: &egui::Context, command: Command) {
@@ -507,13 +526,20 @@ impl eframe::App for CalameApp {
                 actions =
                     library_ui::show(ui, &mut self.sidebar, &self.tree, &self.trash, selected);
             });
+        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        let backdrop = self.backdrop();
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| match &mut self.current {
                 Some(open) => {
-                    self.canvas
-                        .show(ui, &mut open.page, &mut open.history, &mut self.tools);
+                    self.canvas.show(
+                        ui,
+                        &mut open.page,
+                        &mut open.history,
+                        &mut self.tools,
+                        &backdrop,
+                    );
                 }
                 None => {
                     ui.centered_and_justified(|ui| ui.weak(i18n::t("no-page")));
@@ -522,6 +548,7 @@ impl eframe::App for CalameApp {
 
         self.apply(&ctx, actions);
         self.autosave(&ctx);
+        self.poll_task(&ctx);
     }
 
     fn on_exit(&mut self) {

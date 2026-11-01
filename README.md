@@ -6,7 +6,7 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 > Le calame est le roseau taillé qui servait de plume dans l'Antiquité.
 
-**État : développement précoce (phase 6 sur 8).** Voir la feuille de route plus bas.
+**État : développement précoce (phase 7 sur 8).** Voir la feuille de route plus bas.
 
 ## Fonctionnalités
 
@@ -24,6 +24,10 @@ Disponible :
   d'origine
 - Instruments : règle graduée, équerre 45° et 30°/60°, rapporteur, compas. On les déplace, tourne
   et redimensionne ; un trait qui commence près d'un bord s'y cale (droite, ou arc de cercle)
+- Fonds de page : uni, petits carreaux (5 mm), grands carreaux (8 mm), lignes, pointillés, isométrique,
+  ou image importée
+- Import d'un PDF pour l'annoter : chaque page devient une page de Calame, avec la page du PDF en fond
+- Export d'une page, d'un cahier, d'un dossier ou d'une matière en PDF (vectoriel, multipage), PNG ou SVG
 - Annuler / Rétablir illimités (Ctrl+Z, Ctrl+Maj+Z / Ctrl+Y)
 - Thèmes clair et sombre, interface en français
 - Bibliothèque matières > cahiers > sous-dossiers (imbriqués sans limite) > pages, avec nom, couleur
@@ -32,8 +36,8 @@ Disponible :
 - Recherche par nom dans l'arborescence
 - Stockage SQLite local ([format documenté](docs/format.md)), enregistrement automatique
 
-Prévu : rejet de la paume, gomme automatique du stylet, export PDF/PNG/SVG, import PDF,
-fonds de page, sauvegarde/restauration en zip.
+Prévu : rejet de la paume, gomme automatique du stylet, sauvegarde/restauration en zip, paquets
+d'installation.
 
 ## Compilation
 
@@ -54,7 +58,7 @@ Sous Windows, il faut soit les *Build Tools* de Visual Studio (cible `msvc`), so
 | `calame-core` | Modèle de données (traits, pages, historique, arborescence), sans dépendance à l'interface |
 | `calame-shapes` | Reconnaissance de formes : ajustements géométriques, indépendante de l'interface |
 | `calame-storage` | Stockage SQLite : hiérarchie, corbeille, contenu des pages *(zip de sauvegarde à venir)* |
-| `calame-export` | Export PDF/PNG/SVG, import PDF *(à venir)* |
+| `calame-export` | Export SVG/PNG/PDF et import de PDF/images (`resvg`, `svg2pdf`, `hayro`) |
 | `calame-input` | Entrée unifiée souris/tactile/stylet ; backends natifs *(à venir)* |
 | `calame-app` | Interface `egui`/`eframe`, canevas et outils |
 

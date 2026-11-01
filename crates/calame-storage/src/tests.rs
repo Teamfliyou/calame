@@ -1,6 +1,8 @@
 #![allow(clippy::expect_used)]
 
-use calame_core::{Brush, Item, LibraryError, NodeKind, Page, Stroke, StrokePoint, TextBox};
+use calame_core::{
+    Background, Brush, Item, LibraryError, NodeKind, Page, Stroke, StrokePoint, TextBox,
+};
 
 use super::*;
 
@@ -315,4 +317,145 @@ fn settings_roundtrip_and_overwrite() {
         s.setting("favoris").expect("lecture").as_deref(),
         Some("#ff0000,#00ff00")
     );
+}
+
+#[test]
+fn backgrounds_default_to_blank_and_roundtrip() {
+    let s = store();
+    let (subject, _, _, page) = sample(&s);
+    assert_eq!(s.background(page.id).expect("lecture"), Background::Blank);
+    s.set_background(page.id, Background::GridLarge)
+        .expect("fond");
+    assert_eq!(
+        s.background(page.id).expect("lecture"),
+        Background::GridLarge
+    );
+    assert!(matches!(
+        s.set_background(subject.id, Background::Dots),
+        Err(StoreError::NotAPage)
+    ));
+    assert!(matches!(
+        s.set_background(page.id, Background::Image(calame_core::AssetId::new())),
+        Err(StoreError::AssetNotFound(_))
+    ));
+}
+
+#[test]
+fn image_backgrounds_are_stored_copied_and_purged() {
+    let mut s = store();
+    let (_, notebook, _, page) = sample(&s);
+    let asset = s
+        .add_asset("image/png", 800.0, 1100.0, &[1, 2, 3])
+        .expect("image");
+    s.set_background(page.id, Background::Image(asset))
+        .expect("fond");
+    let loaded = s.asset(asset).expect("lecture");
+    assert_eq!(
+        (loaded.mime.as_str(), loaded.width, loaded.data.clone()),
+        ("image/png", 800.0, vec![1, 2, 3])
+    );
+
+    // Dupliquer le cahier garde le fond de la copie, avec la même image.
+    let copy = s.duplicate(notebook.id).expect("dupliquer");
+    let folder = children(&s, Some(copy.id));
+    let copied_page = children(&s, Some(folder[0].id));
+    assert_eq!(
+        s.background(copied_page[0].id).expect("fond"),
+        Background::Image(asset)
+    );
+
+    // L'image reste tant qu'une page l'utilise ; elle disparaît avec la dernière.
+    s.trash(notebook.id).expect("corbeille");
+    s.empty_trash().expect("vider");
+    assert!(s.asset(asset).is_ok(), "la copie utilise encore l'image");
+    s.trash(copy.id).expect("corbeille");
+    s.empty_trash().expect("vider");
+    assert!(matches!(s.asset(asset), Err(StoreError::AssetNotFound(_))));
+}
+
+#[test]
+fn changing_a_background_frees_the_previous_image() {
+    let s = store();
+    let (_, _, _, page) = sample(&s);
+    let asset = s.add_asset("image/png", 10.0, 10.0, &[9]).expect("image");
+    s.set_background(page.id, Background::Image(asset))
+        .expect("fond");
+    s.set_background(page.id, Background::Dots).expect("fond");
+    assert!(matches!(s.asset(asset), Err(StoreError::AssetNotFound(_))));
+}
+
+#[test]
+fn importing_a_document_builds_a_notebook_with_one_page_per_image() {
+    let s = store();
+    let (subject, notebook, _, _) = sample(&s);
+    let pages: Vec<ImportedPage> = (0..3)
+        .map(|i| ImportedPage {
+            mime: "image/png".into(),
+            width: 794.0,
+            height: 1123.0,
+            data: vec![i],
+        })
+        .collect();
+
+    let root = s
+        .import_document(subject.id, "Cours", &pages)
+        .expect("import");
+    assert_eq!(root.kind, NodeKind::Notebook);
+    let created = children(&s, Some(root.id));
+    assert_eq!(names(&created), ["Page 1", "Page 2", "Page 3"]);
+    for (page, expected) in created.iter().zip(0u8..) {
+        let Background::Image(id) = s.background(page.id).expect("fond") else {
+            panic!("fond image attendu");
+        };
+        assert_eq!(s.asset(id).expect("image").data, vec![expected]);
+    }
+
+    // Dans un cahier, le document devient un sous-dossier.
+    let folder = s
+        .import_document(notebook.id, "Annexe", &pages[..1])
+        .expect("import");
+    assert_eq!(folder.kind, NodeKind::Folder);
+    // Sous une page, c'est refusé et rien ne reste.
+    let page_id = children(&s, Some(created[0].parent_id.expect("parent")))[0].id;
+    let before = s.all_nodes().expect("lecture").len();
+    assert!(s.import_document(page_id, "X", &pages).is_err());
+    assert_eq!(s.all_nodes().expect("lecture").len(), before);
+}
+
+#[test]
+fn schema_v2_databases_are_upgraded_in_place() {
+    let dir = std::env::temp_dir().join(format!("calame-migrate-{}", NodeId::new()));
+    let path = dir.join("calame.db");
+    std::fs::create_dir_all(&dir).expect("dossier");
+    // Une base telle que la phase 4 l'écrivait (schéma 2, sans fonds ni images).
+    {
+        let conn = Connection::open(&path).expect("base");
+        conn.execute_batch(
+            "CREATE TABLE nodes (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL, name TEXT NOT NULL, color INTEGER NOT NULL, icon TEXT NOT NULL,
+                position INTEGER NOT NULL, created_at INTEGER NOT NULL, trashed_at INTEGER);
+             CREATE TABLE page_data (page_id TEXT PRIMARY KEY, format INTEGER NOT NULL, data BLOB NOT NULL, updated_at INTEGER NOT NULL);
+             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO nodes VALUES ('11111111-1111-1111-1111-111111111111', NULL, 'subject', 'Ancienne', 0, '', 0, 0, NULL);
+             PRAGMA user_version = 2;",
+        )
+        .expect("schéma 2");
+    }
+    let s = Store::open(&path).expect("migration");
+    let old: NodeId = "11111111-1111-1111-1111-111111111111".parse().expect("id");
+    assert_eq!(s.node(old).expect("lecture").name, "Ancienne");
+    let page = s
+        .create_node(
+            Some(
+                s.create_node(Some(old), NodeKind::Notebook, "C")
+                    .expect("cahier")
+                    .id,
+            ),
+            NodeKind::Page,
+            "P",
+        )
+        .expect("page");
+    assert_eq!(s.background(page.id).expect("fond"), Background::Blank);
+    drop(s);
+    let _ = std::fs::remove_dir_all(dir);
 }
