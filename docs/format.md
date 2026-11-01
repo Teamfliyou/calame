@@ -1,7 +1,7 @@
 # Format de stockage de Calame
 
 La bibliothèque est un fichier **SQLite** unique (`calame.db`), en mode WAL.
-Sous Windows : `%APPDATA%\Calame\data\calame.db`. La variable d'environnement `CALAME_DB` permet
+Sous Windows : `%APPDATA%\calame\Calame\data\calame.db`. La variable d'environnement `CALAME_DB` permet
 de choisir un autre fichier.
 
 La version du schéma est dans `PRAGMA user_version` (actuellement **1**). Une base créée par une
