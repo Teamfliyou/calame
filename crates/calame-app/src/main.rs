@@ -3,16 +3,20 @@
 mod canvas;
 mod i18n;
 mod library_ui;
+mod toolbar;
+mod tools;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context as _};
-use calame_core::{Brush, BrushKind, Color, History, LibraryTree, Node, NodeId, NodeKind, Page};
+use calame_core::{History, Item, LibraryTree, Node, NodeId, NodeKind, Page};
 use calame_storage::Store;
 use canvas::{Canvas, View};
 use library_ui::{Action, SidebarState};
+use toolbar::{Command, ToolbarState};
+use tools::{Tool, ToolSettings};
 
 /// Délai sans modification avant l'enregistrement automatique de la page ouverte.
 const AUTOSAVE_DELAY: Duration = Duration::from_secs(1);
@@ -55,7 +59,9 @@ struct CalameApp {
     /// Historiques des pages visitées pendant la session, pour annuler après un changement de page.
     histories: HashMap<NodeId, History>,
     canvas: Canvas,
-    brush: Brush,
+    tools: ToolSettings,
+    /// Éléments copiés ou coupés, collables dans n'importe quelle page.
+    clipboard: Vec<Item>,
     dark: bool,
     sidebar: SidebarState,
     error: Option<String>,
@@ -72,7 +78,6 @@ fn database_path() -> PathBuf {
 
 impl CalameApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
         let path = database_path();
         let store = Store::open(&path)
             .with_context(|| format!("ouverture de la bibliothèque {}", path.display()))?;
@@ -83,11 +88,13 @@ impl CalameApp {
             current: None,
             histories: HashMap::new(),
             canvas: Canvas::default(),
-            brush: Brush::default(),
+            tools: ToolSettings::default(),
+            clipboard: Vec::new(),
             dark: false,
             sidebar: SidebarState::default(),
             error: None,
         };
+        app.load_settings(&cc.egui_ctx);
         app.refresh();
         if app.tree.is_empty() {
             app.create_welcome_content(&cc.egui_ctx);
@@ -147,6 +154,31 @@ impl CalameApp {
         }
     }
 
+    fn load_settings(&mut self, ctx: &egui::Context) {
+        let favorites = self.store.setting("favorites");
+        if let Some(Some(text)) = self.report(favorites) {
+            self.tools.set_favorites_from_string(&text);
+        }
+        let dark = self.store.setting("dark");
+        if let Some(Some(text)) = self.report(dark) {
+            self.dark = text == "1";
+        }
+        self.apply_theme(ctx);
+    }
+
+    fn apply_theme(&self, ctx: &egui::Context) {
+        ctx.set_visuals(if self.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        });
+    }
+
+    fn save_setting(&mut self, key: &str, value: &str) {
+        let result = self.store.set_setting(key, value);
+        self.report(result);
+    }
+
     fn save_current(&mut self) {
         let Some(open) = &self.current else {
             return;
@@ -180,6 +212,7 @@ impl CalameApp {
             let history = self.histories.remove(&id).unwrap_or_default();
             self.current = Some(OpenPage::new(id, page, history));
             self.canvas = Canvas::default();
+            self.canvas.sync_tool(self.tools.tool);
         }
     }
 
@@ -278,66 +311,28 @@ impl CalameApp {
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            let pen = self.brush.kind == BrushKind::Pen;
-            if ui.selectable_label(pen, i18n::t("tool-pen")).clicked() {
-                self.brush.kind = BrushKind::Pen;
-                self.brush.width = 3.0;
-                self.brush.color = Color::BLACK;
-            }
-            if ui
-                .selectable_label(!pen, i18n::t("tool-highlighter"))
-                .clicked()
-            {
-                self.brush.kind = BrushKind::Highlighter;
-                self.brush.width = 18.0;
-                self.brush.color = Color {
-                    r: 255,
-                    g: 235,
-                    b: 59,
-                    a: 110,
-                };
-            }
-            ui.separator();
-            ui.add(egui::Slider::new(&mut self.brush.width, 1.0..=40.0).text(i18n::t("width")));
-            ui.separator();
-            let (can_undo, can_redo) = self.current.as_ref().map_or((false, false), |o| {
-                (o.history.can_undo(), o.history.can_redo())
-            });
-            if ui
-                .add_enabled(can_undo, egui::Button::new(i18n::t("undo")))
-                .clicked()
-            {
-                self.undo();
-            }
-            if ui
-                .add_enabled(can_redo, egui::Button::new(i18n::t("redo")))
-                .clicked()
-            {
-                self.redo();
-            }
-            ui.separator();
-            if ui.button(i18n::t("reset-view")).clicked() {
-                self.canvas.view = View::default();
-            }
-            if ui.checkbox(&mut self.dark, i18n::t("dark-theme")).changed() {
-                ui.ctx().set_visuals(if self.dark {
-                    egui::Visuals::dark()
-                } else {
-                    egui::Visuals::light()
-                });
-            }
-            if let Some(open) = &self.current {
-                let path: Vec<&str> = self
-                    .tree
-                    .path(open.id)
-                    .iter()
-                    .map(|n| n.name.as_str())
-                    .collect();
-                ui.separator();
-                ui.weak(path.join(" › "));
-            }
+        let breadcrumb = self.current.as_ref().map(|open| {
+            self.tree
+                .path(open.id)
+                .iter()
+                .map(|n| n.name.as_str())
+                .collect::<Vec<_>>()
+                .join(" › ")
         });
+        let (can_undo, can_redo) = self.current.as_ref().map_or((false, false), |o| {
+            (o.history.can_undo(), o.history.can_redo())
+        });
+        let state = ToolbarState {
+            can_undo,
+            can_redo,
+            has_selection: self.canvas.has_selection(),
+            can_paste: !self.clipboard.is_empty(),
+            dark: self.dark,
+            breadcrumb: breadcrumb.as_deref(),
+        };
+        for command in toolbar::show(ui, &mut self.tools, &state) {
+            self.run(ui.ctx(), command);
+        }
         if let Some(message) = self.error.clone() {
             ui.horizontal(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, message);
@@ -345,6 +340,64 @@ impl CalameApp {
                     self.error = None;
                 }
             });
+        }
+    }
+
+    fn run(&mut self, ctx: &egui::Context, command: Command) {
+        match command {
+            Command::Undo => self.undo(),
+            Command::Redo => self.redo(),
+            Command::ResetView => self.canvas.view = View::default(),
+            Command::SetDark(dark) => {
+                self.dark = dark;
+                self.apply_theme(ctx);
+                self.save_setting("dark", if dark { "1" } else { "0" });
+            }
+            Command::Copy => self.copy_selection(),
+            Command::Cut => {
+                self.copy_selection();
+                self.delete_selection();
+            }
+            Command::Paste => self.paste(),
+            Command::Delete => self.delete_selection(),
+            Command::Recolor => {
+                if let Some(o) = &mut self.current {
+                    self.canvas
+                        .recolor_selection(&mut o.page, &mut o.history, self.tools.color);
+                }
+            }
+            Command::FavoritesChanged => {
+                let text = self.tools.favorites_to_string();
+                self.save_setting("favorites", &text);
+            }
+        }
+    }
+
+    fn copy_selection(&mut self) {
+        if let Some(o) = &self.current {
+            let items = self.canvas.selected_items(&o.page);
+            if !items.is_empty() {
+                self.clipboard = items;
+            }
+        }
+    }
+
+    fn delete_selection(&mut self) {
+        if let Some(o) = &mut self.current {
+            self.canvas.delete_selection(&mut o.page, &mut o.history);
+        }
+    }
+
+    fn paste(&mut self) {
+        if self.clipboard.is_empty() {
+            return;
+        }
+        if let Some(o) = &mut self.current {
+            // Le collage sélectionne les nouveaux éléments : on passe au lasso pour les manipuler.
+            self.tools.tool = Tool::Lasso;
+            self.canvas.sync_tool(Tool::Lasso);
+            self.canvas
+                .paste(&mut o.page, &mut o.history, &self.clipboard);
         }
     }
 
@@ -361,17 +414,57 @@ impl CalameApp {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        // Pendant une saisie (texte, renommage), les raccourcis appartiennent au champ.
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
         let undo = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
             egui::Key::Z,
         );
         let redo_y = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Y);
+        let select_all = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::A);
         // La combinaison la plus spécifique d'abord, sinon Ctrl+Maj+Z déclencherait « annuler ».
         if ctx.input_mut(|i| i.consume_shortcut(&redo) || i.consume_shortcut(&redo_y)) {
             self.redo();
         } else if ctx.input_mut(|i| i.consume_shortcut(&undo)) {
             self.undo();
+        }
+        let (mut copy, mut cut, mut paste) = (false, false, false);
+        let (delete, all, escape) = ctx.input_mut(|i| {
+            for event in &i.events {
+                match event {
+                    egui::Event::Copy => copy = true,
+                    egui::Event::Cut => cut = true,
+                    egui::Event::Paste(_) => paste = true,
+                    _ => {}
+                }
+            }
+            (
+                i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
+                i.consume_shortcut(&select_all),
+                i.key_pressed(egui::Key::Escape),
+            )
+        });
+        if copy || cut {
+            self.copy_selection();
+        }
+        if cut || delete {
+            self.delete_selection();
+        }
+        if paste {
+            self.paste();
+        }
+        if all {
+            if let Some(o) = &self.current {
+                self.tools.tool = Tool::Lasso;
+                self.canvas.sync_tool(Tool::Lasso);
+                self.canvas.select_all(&o.page);
+            }
+        }
+        if escape {
+            self.canvas.clear_selection();
         }
     }
 }
@@ -396,7 +489,7 @@ impl eframe::App for CalameApp {
             .show(ui, |ui| match &mut self.current {
                 Some(open) => {
                     self.canvas
-                        .show(ui, &mut open.page, &mut open.history, self.brush);
+                        .show(ui, &mut open.page, &mut open.history, &mut self.tools);
                 }
                 None => {
                     ui.centered_and_justified(|ui| ui.weak(i18n::t("no-page")));

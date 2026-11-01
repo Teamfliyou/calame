@@ -541,6 +541,7 @@ dependencies = [
  "directories",
  "eframe",
  "egui",
+ "uuid",
 ]
 
 [[package]]
@@ -580,6 +581,7 @@ dependencies = [
  "calame-core",
  "postcard",
  "rusqlite",
+ "serde",
  "thiserror 2.0.21",
 ]
 

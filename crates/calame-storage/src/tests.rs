@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used)]
 
-use calame_core::{Brush, LibraryError, NodeKind, Page, Stroke, StrokePoint};
+use calame_core::{Brush, Item, LibraryError, NodeKind, Page, Stroke, StrokePoint, TextBox};
 
 use super::*;
 
@@ -145,7 +145,7 @@ fn duplicate_copies_subtree_and_page_content() {
         pressure: 0.7,
         tilt: None,
     });
-    content.strokes.push(stroke);
+    content.items.push(Item::Stroke(stroke));
     s.save_page(page.id, &content).expect("sauvegarde");
 
     let copy = s.duplicate(notebook.id).expect("dupliquer");
@@ -210,8 +210,14 @@ fn page_roundtrip_and_empty_default() {
                 tilt: Some(0.5),
             });
         }
-        content.strokes.push(stroke);
+        content.items.push(Item::Stroke(stroke));
     }
+    content.items.push(Item::Text(TextBox::new(
+        calame_core::Point2::new(3.0, 4.0),
+        "Bonjour".into(),
+        16.0,
+        calame_core::Color::rgb(10, 20, 30),
+    )));
     s.save_page(page.id, &content).expect("sauvegarde");
     s.save_page(page.id, &content).expect("écrasement");
     assert_eq!(s.load_page(page.id).expect("lecture"), content);
@@ -249,4 +255,64 @@ fn data_survives_reopening_the_file() {
     assert_eq!(s.all_nodes().expect("lecture").len(), 4);
     drop(s);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn legacy_v1_pages_are_converted() {
+    let s = store();
+    let (_, _, _, page) = sample(&s);
+    let stroke = Stroke::new(Brush::default());
+    let bytes = postcard::to_allocvec(&PageV1 {
+        strokes: vec![stroke.clone()],
+    })
+    .expect("encodage");
+    s.conn
+        .execute(
+            "INSERT INTO page_data (page_id, format, data, updated_at) VALUES (?1, 1, ?2, 0)",
+            params![page.id.to_string(), bytes],
+        )
+        .expect("insertion");
+    assert_eq!(
+        s.load_page(page.id).expect("lecture"),
+        Page {
+            items: vec![Item::Stroke(stroke)]
+        }
+    );
+    // Réenregistrée, la page passe au format courant.
+    let loaded = s.load_page(page.id).expect("lecture");
+    s.save_page(page.id, &loaded).expect("sauvegarde");
+    let format: i64 = s
+        .conn
+        .query_row("SELECT format FROM page_data", [], |r| r.get(0))
+        .expect("format");
+    assert_eq!(format, PAGE_FORMAT);
+}
+
+#[test]
+fn unknown_page_format_is_an_error() {
+    let s = store();
+    let (_, _, _, page) = sample(&s);
+    s.conn
+        .execute(
+            "INSERT INTO page_data (page_id, format, data, updated_at) VALUES (?1, 99, x'00', 0)",
+            [page.id.to_string()],
+        )
+        .expect("insertion");
+    assert!(matches!(
+        s.load_page(page.id),
+        Err(StoreError::UnsupportedPageFormat(99))
+    ));
+}
+
+#[test]
+fn settings_roundtrip_and_overwrite() {
+    let s = store();
+    assert_eq!(s.setting("favoris").expect("lecture"), None);
+    s.set_setting("favoris", "#000000").expect("écriture");
+    s.set_setting("favoris", "#ff0000,#00ff00")
+        .expect("écrasement");
+    assert_eq!(
+        s.setting("favoris").expect("lecture").as_deref(),
+        Some("#ff0000,#00ff00")
+    );
 }

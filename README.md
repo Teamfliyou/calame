@@ -6,14 +6,18 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 > Le calame est le roseau taillé qui servait de plume dans l'Antiquité.
 
-**État : développement précoce (phase 3 sur 8).** Voir la feuille de route plus bas.
+**État : développement précoce (phase 4 sur 8).** Voir la feuille de route plus bas.
 
 ## Fonctionnalités
 
 Disponible :
 
 - Canevas vectoriel avec zoom (Ctrl + molette) et déplacement (molette, bouton du milieu)
-- Stylo sensible à la pression, lissage Catmull-Rom, surligneur
+- Stylo sensible à la pression, lissage Catmull-Rom, surligneur, épaisseurs prédéfinies et curseur
+- Gommes : trait entier ou zone (les traits sont coupés là où passe la gomme)
+- Lasso : déplacer, redimensionner, pivoter, copier, couper, coller, supprimer, recolorer
+- Zones de texte tapées au clavier (déplaçables, modifiables, recolorables)
+- Couleurs : palette, favoris, sélecteur HSV, saisie hexadécimale, pipette
 - Annuler / Rétablir illimités (Ctrl+Z, Ctrl+Maj+Z / Ctrl+Y)
 - Thèmes clair et sombre, interface en français
 - Bibliothèque matières > cahiers > sous-dossiers (imbriqués sans limite) > pages, avec nom, couleur
@@ -22,7 +26,7 @@ Disponible :
 - Recherche par nom dans l'arborescence
 - Stockage SQLite local ([format documenté](docs/format.md)), enregistrement automatique
 
-Prévu : gommes, lasso, règle,
+Prévu : rejet de la paume, gomme automatique du stylet, règle,
 équerre, rapporteur, compas, reconnaissance de formes locale, export PDF/PNG/SVG, import PDF,
 fonds de page, sauvegarde/restauration en zip.
 

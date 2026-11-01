@@ -44,6 +44,22 @@ pub fn t(key: &str) -> &'static str {
         "no-results" => "Aucun résultat",
         "no-page" => "Sélectionne ou crée une page dans la bibliothèque.",
         "dismiss" => "Fermer",
+        "tool-eraser-stroke" => "Gomme (trait)",
+        "tool-eraser-area" => "Gomme (zone)",
+        "tool-lasso" => "Lasso",
+        "tool-text" => "Texte",
+        "tool-pipette" => "Pipette",
+        "add-favorite" => "Ajouter la couleur aux favoris",
+        "favorite-hint" => "Clic : choisir · clic droit : retirer",
+        "eraser-size" => "Taille",
+        "text-size" => "Taille du texte",
+        "pipette-hint" => "Clique sur un trait ou un texte pour prendre sa couleur.",
+        "copy" => "Copier",
+        "cut" => "Couper",
+        "paste" => "Coller",
+        "recolor" => "Appliquer la couleur",
+        "delete" => "Supprimer",
+        "lasso-hint" => "Entoure des éléments pour les sélectionner.",
         _ => "?",
     }
 }
@@ -64,6 +80,8 @@ mod tests {
             "new-subject",
             "to-trash",
             "no-page",
+            "tool-lasso",
+            "paste",
         ] {
             assert_ne!(t(key), "?", "clé manquante : {key}");
         }

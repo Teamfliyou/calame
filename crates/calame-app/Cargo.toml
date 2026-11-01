@@ -15,6 +15,7 @@ anyhow = "1"
 egui = "0.37"
 calame-storage = { version = "0.1.0", path = "../calame-storage" }
 directories = "6.0.0"
+uuid = "1.20.0"
 
 [lints]
 workspace = true

@@ -7,14 +7,23 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use calame_core::library::check_placement;
-use calame_core::{Color, LibraryError, Node, NodeId, NodeKind, Page};
+use calame_core::{Color, Item, LibraryError, Node, NodeId, NodeKind, Page, Stroke};
 use rusqlite::types::Type;
 use rusqlite::{params, Connection, OptionalExtension, Row};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 /// Version du codec des pages (`page_data.format`).
-const PAGE_FORMAT: i64 = 1;
+///
+/// 1 : traits seuls ; 2 : éléments (traits et textes).
+const PAGE_FORMAT: i64 = 2;
+
+/// Page telle qu'enregistrée en format 1, lue puis convertie.
+#[derive(Serialize, Deserialize)]
+struct PageV1 {
+    strokes: Vec<Stroke>,
+}
 
 /// Couleurs proposées par défaut aux nouvelles matières, à tour de rôle.
 const SUBJECT_PALETTE: [Color; 6] = [
@@ -44,6 +53,8 @@ pub enum StoreError {
     NotAPage,
     #[error("cet élément n'est pas dans la corbeille")]
     NotTrashed,
+    #[error("format de page inconnu : {0}")]
+    UnsupportedPageFormat(i64),
     #[error("base créée par une version plus récente de Calame (schéma {0})")]
     UnsupportedVersion(i32),
 }
@@ -96,6 +107,15 @@ impl Store {
                     updated_at INTEGER NOT NULL
                 );
                 PRAGMA user_version = 1;",
+            )?;
+        }
+        if version < 2 {
+            conn.execute_batch(
+                "CREATE TABLE settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                PRAGMA user_version = 2;",
             )?;
         }
         Ok(Self { conn })
@@ -335,16 +355,16 @@ impl Store {
 
     /// Charge une page ; une page jamais enregistrée est vide.
     pub fn load_page(&self, id: NodeId) -> Result<Page> {
-        let data: Option<Vec<u8>> = self
+        let row: Option<(i64, Vec<u8>)> = self
             .conn
             .query_row(
-                "SELECT data FROM page_data WHERE page_id = ?1",
+                "SELECT format, data FROM page_data WHERE page_id = ?1",
                 [id.to_string()],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        match data {
-            Some(bytes) => Ok(postcard::from_bytes(&bytes)?),
+        match row {
+            Some((format, bytes)) => decode_page(format, &bytes),
             None => {
                 self.node(id)?;
                 Ok(Page::default())
@@ -362,6 +382,26 @@ impl Store {
              ON CONFLICT(page_id) DO UPDATE SET
                 format = excluded.format, data = excluded.data, updated_at = excluded.updated_at",
             params![id.to_string(), PAGE_FORMAT, bytes, now()],
+        )?;
+        Ok(())
+    }
+
+    // ---- Réglages ------------------------------------------------------------------------
+
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
         )?;
         Ok(())
     }
@@ -463,6 +503,19 @@ fn copy_subtree(
         copy_subtree(conn, child, Some(new_id), None)?;
     }
     Ok(new_id)
+}
+
+fn decode_page(format: i64, bytes: &[u8]) -> Result<Page> {
+    match format {
+        1 => {
+            let legacy: PageV1 = postcard::from_bytes(bytes)?;
+            Ok(Page {
+                items: legacy.strokes.into_iter().map(Item::Stroke).collect(),
+            })
+        }
+        2 => Ok(postcard::from_bytes(bytes)?),
+        other => Err(StoreError::UnsupportedPageFormat(other)),
+    }
 }
 
 fn clean_name(name: &str) -> Result<String> {
