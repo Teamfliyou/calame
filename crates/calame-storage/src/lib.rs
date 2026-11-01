@@ -59,6 +59,10 @@ pub enum StoreError {
     UnsupportedPageFormat(i64),
     #[error("image de fond introuvable : {0}")]
     AssetNotFound(AssetId),
+    #[error("archive zip : {0}")]
+    Zip(#[from] zip::result::ZipError),
+    #[error("ce fichier n'est pas une sauvegarde Calame valide")]
+    NotABackup,
     #[error("base créée par une version plus récente de Calame (schéma {0})")]
     UnsupportedVersion(i32),
 }
@@ -712,6 +716,9 @@ fn node_from_row(row: &Row<'_>) -> rusqlite::Result<Node> {
         position: row.get(6)?,
     })
 }
+
+mod backup;
+pub use backup::{restore_backup, DB_ENTRY};
 
 #[cfg(test)]
 mod tests;

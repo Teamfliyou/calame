@@ -10,6 +10,26 @@ use crate::{BackgroundImage, PageBackground};
 
 /// Nombre de points ajoutés par segment lors du lissage des traits exportés.
 const SMOOTHING: usize = 4;
+/// Écart minimal entre deux points exportés, en unités de page (environ 0,1 mm).
+const MIN_STEP: f32 = 0.4;
+
+/// Retire les points à moins de `MIN_STEP` du précédent : invisibles à l'œil, mais ils multipliaient
+/// la taille du fichier par dix. Le dernier point est toujours conservé.
+fn thin(points: Vec<StrokePoint>) -> Vec<StrokePoint> {
+    let count = points.len();
+    let mut out: Vec<StrokePoint> = Vec::with_capacity(count);
+    for (i, p) in points.into_iter().enumerate() {
+        let last = i + 1 == count;
+        if last
+            || out
+                .last()
+                .map_or(true, |q| q.pos.distance(p.pos) >= MIN_STEP)
+        {
+            out.push(p);
+        }
+    }
+    out
+}
 
 fn n(value: f32) -> String {
     let text = format!("{value:.2}");
@@ -119,7 +139,7 @@ fn points_attr(points: &[StrokePoint]) -> String {
 }
 
 fn stroke_svg(out: &mut String, stroke: &Stroke) {
-    let points = stroke.smoothed(SMOOTHING);
+    let points = thin(stroke.smoothed(SMOOTHING));
     let c = stroke.brush.color;
     match (stroke.brush.kind, points.as_slice()) {
         (_, []) => {}

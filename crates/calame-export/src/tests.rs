@@ -267,3 +267,54 @@ fn imported_images_keep_their_format_and_fit_the_page_width() {
     assert_eq!(imported.mime, "image/jpeg");
     assert!((imported.height - 2.0 * PAGE_WIDTH).abs() < 1e-2);
 }
+
+/// Mesure d'export : `cargo test --release -p calame-export -- --ignored --nocapture`.
+#[test]
+#[ignore = "mesure de performance"]
+fn perf_export_a_dense_page() {
+    use std::time::Instant;
+    let items: Vec<Item> = (0..1500)
+        .map(|i| {
+            let (x, y) = ((i % 30) as f32 * 25.0, (i / 30) as f32 * 20.0);
+            let pts: Vec<(f32, f32)> = (0..80)
+                .map(|j| (x + j as f32 * 0.3, y + 6.0 * (j as f32 * 0.2).sin()))
+                .collect();
+            thick_black(&pts)
+        })
+        .collect();
+    let page = Page { items };
+    let bg = PageBackground::Pattern(Background::GridSmall);
+    let start = Instant::now();
+    let svg = page_svg(&page, &bg);
+    let svg_time = start.elapsed();
+    let start = Instant::now();
+    let png = svg_to_png(&svg, PNG_SCALE).expect("PNG");
+    let png_time = start.elapsed();
+    let start = Instant::now();
+    let pdf = svgs_to_pdf(std::slice::from_ref(&svg)).expect("PDF");
+    let pdf_time = start.elapsed();
+    eprintln!(
+        "PERF page de 1500 traits : SVG {svg_time:?} ({} Ko), PNG {png_time:?} ({} Ko), PDF {pdf_time:?} ({} Ko)",
+        svg.len() / 1000,
+        png.len() / 1000,
+        pdf.len() / 1000
+    );
+}
+
+#[test]
+fn dense_strokes_do_not_bloat_the_svg() {
+    // 5 000 points sur 100 unités : l'œil n'en distingue pas plus de 250.
+    let points: Vec<(f32, f32)> = (0..5000)
+        .map(|i| (i as f32 * 0.02, 3.0 * (i as f32 * 0.01).sin()))
+        .collect();
+    let page = Page {
+        items: vec![thick_black(&points)],
+    };
+    let svg = page_svg(&page, &PageBackground::Pattern(Background::Blank));
+    assert!(
+        svg.len() < 12_000,
+        "SVG de {} octets pour un seul trait",
+        svg.len()
+    );
+    parse(&svg).expect("SVG lisible");
+}

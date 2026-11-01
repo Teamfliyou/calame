@@ -24,4 +24,27 @@ image = { version = "0.25.6", default-features = false, features = ["png", "jpeg
 [lints]
 workspace = true
 
+[[bin]]
+name = "calame"
+path = "src/main.rs"
+
+[package.metadata.deb]
+name = "calame"
+maintainer = "Contributeurs de Calame <https://github.com/Teamfliyou/calame/issues>"
+copyright = "2026, Contributeurs de Calame"
+license-file = ["../../LICENSE-MIT", "0"]
+extended-description = "Prise de notes manuscrites pour stylets et tablettes graphiques : matières, cahiers, formes automatiques, règles, import et export de PDF."
+section = "text"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/calame", "usr/bin/calame", "755"],
+    ["../../packaging/linux/calame.desktop", "usr/share/applications/calame.desktop", "644"],
+    ["../../assets/icon.png", "usr/share/icons/hicolor/256x256/apps/calame.png", "644"],
+    ["../../README.md", "usr/share/doc/calame/README.md", "644"],
+    ["../../docs/guide-utilisateur.md", "usr/share/doc/calame/guide-utilisateur.md", "644"],
+    ["../../LICENSE-MIT", "usr/share/doc/calame/LICENSE-MIT", "644"],
+    ["../../LICENSE-APACHE", "usr/share/doc/calame/LICENSE-APACHE", "644"],
+]
+
 

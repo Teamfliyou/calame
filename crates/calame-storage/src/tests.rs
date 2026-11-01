@@ -459,3 +459,39 @@ fn schema_v2_databases_are_upgraded_in_place() {
     drop(s);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Mesure d'enregistrement et de chargement : `cargo test --release -p calame-storage -- --ignored --nocapture`.
+#[test]
+#[ignore = "mesure de performance"]
+fn perf_save_and_load_a_large_page() {
+    use std::time::Instant;
+    let s = store();
+    let (_, _, _, page) = sample(&s);
+    let mut content = Page::default();
+    for i in 0..5000 {
+        let mut stroke = Stroke::new(Brush::default());
+        for j in 0..200 {
+            stroke.push(StrokePoint {
+                pos: calame_core::Point2::new(i as f32 + j as f32 * 0.5, (j % 17) as f32),
+                pressure: 0.5,
+                tilt: Some(0.4),
+            });
+        }
+        content.items.push(Item::Stroke(stroke));
+    }
+    let start = Instant::now();
+    s.save_page(page.id, &content).expect("sauvegarde");
+    let save = start.elapsed();
+    let size: i64 = s
+        .conn
+        .query_row("SELECT length(data) FROM page_data", [], |r| r.get(0))
+        .expect("taille");
+    let start = Instant::now();
+    let loaded = s.load_page(page.id).expect("chargement");
+    let load = start.elapsed();
+    assert_eq!(loaded.items.len(), 5000);
+    eprintln!(
+        "PERF page de 5000 traits, 1 000 000 points : enregistrement {save:?}, chargement {load:?}, {} Mo",
+        size / 1_000_000
+    );
+}

@@ -72,6 +72,14 @@ impl Rect2 {
         self.max.y - self.min.y
     }
 
+    /// Les deux rectangles se chevauchent-ils (bords compris) ?
+    pub fn intersects(self, other: Self) -> bool {
+        self.min.x <= other.max.x
+            && self.max.x >= other.min.x
+            && self.min.y <= other.max.y
+            && self.max.y >= other.min.y
+    }
+
     pub fn contains(self, p: Point2) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
     }
@@ -237,6 +245,25 @@ mod tests {
         assert_eq!(u.width(), 5.0);
         assert_eq!(u.height(), 3.0);
         assert!(Rect2::from_points([]).is_none());
+    }
+
+    #[test]
+    fn rect_intersection() {
+        let r = |x0: f32, y0: f32, x1: f32, y1: f32| Rect2 {
+            min: Point2::new(x0, y0),
+            max: Point2::new(x1, y1),
+        };
+        assert!(r(0.0, 0.0, 10.0, 10.0).intersects(r(5.0, 5.0, 20.0, 20.0)));
+        assert!(
+            r(0.0, 0.0, 10.0, 10.0).intersects(r(10.0, 10.0, 20.0, 20.0)),
+            "bords communs"
+        );
+        assert!(!r(0.0, 0.0, 10.0, 10.0).intersects(r(11.0, 0.0, 20.0, 10.0)));
+        assert!(!r(0.0, 0.0, 10.0, 10.0).intersects(r(0.0, -20.0, 10.0, -1.0)));
+        assert!(
+            r(0.0, 0.0, 100.0, 100.0).intersects(r(40.0, 40.0, 50.0, 50.0)),
+            "inclusion"
+        );
     }
 
     #[test]

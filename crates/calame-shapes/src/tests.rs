@@ -585,3 +585,33 @@ fn one_undo_restores_the_original_stroke_after_a_correction() {
     history.undo(&mut page);
     assert!(page.items.is_empty());
 }
+
+/// Mesure de reconnaissance : `cargo test --release -p calame-shapes -- --ignored --nocapture`.
+#[test]
+#[ignore = "mesure de performance"]
+fn perf_recognition_time() {
+    use std::time::Instant;
+    let mut rng = Rng(5);
+    let circle = shake(
+        &circle_trace(Point2::new(0.0, 0.0), 120.0, 120.0, 0.0, 0.3, 1.0),
+        2.0,
+        &mut rng,
+    );
+    let long: Vec<Point2> = (0..3000)
+        .map(|i| Point2::new(i as f32 * 0.4, 60.0 * (i as f32 * 0.01).sin()))
+        .collect();
+    for (name, pts) in [
+        ("cercle (121 points)", &circle),
+        ("courbe (3000 points)", &long),
+    ] {
+        let start = Instant::now();
+        let runs = 200;
+        for _ in 0..runs {
+            let _ = recognize(pts);
+        }
+        eprintln!(
+            "PERF reconnaissance {name} : {:?} par tracé",
+            start.elapsed() / runs
+        );
+    }
+}

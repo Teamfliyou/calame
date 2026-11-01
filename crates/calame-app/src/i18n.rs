@@ -103,6 +103,9 @@ pub fn t(key: &str) -> &'static str {
         "busy-export" => "Export en cours…",
         "busy-import" => "Import du PDF en cours…",
         "nothing-to-export" => "Aucune page à exporter ici.",
+        "backup" => "Sauvegarder la bibliothèque…",
+        "restore-backup" => "Restaurer une sauvegarde…",
+        "restore-confirm" => "Remplacer la bibliothèque actuelle par cette sauvegarde ? L'ancienne est conservée à côté du fichier de la bibliothèque.",
         _ => "?",
     }
 }

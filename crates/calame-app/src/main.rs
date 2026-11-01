@@ -6,6 +6,7 @@ mod files;
 mod i18n;
 mod instruments_ui;
 mod library_ui;
+mod render_cache;
 mod toolbar;
 mod tools;
 
@@ -556,6 +557,17 @@ impl eframe::App for CalameApp {
     }
 }
 
+/// Icône de la fenêtre, intégrée au programme (voir `assets/make_icon.py`).
+fn window_icon() -> Option<egui::IconData> {
+    let png = include_bytes!("../../../assets/icon.png");
+    let image = image::load_from_memory(png).ok()?.to_rgba8();
+    Some(egui::IconData {
+        width: image.width(),
+        height: image.height(),
+        rgba: image.into_raw(),
+    })
+}
+
 fn main() -> anyhow::Result<()> {
     let mut wgpu_options = eframe::WgpuConfiguration::default();
     // Sous Windows, le choix automatique retient parfois Vulkan, dont certains pilotes plantent
@@ -566,10 +578,20 @@ fn main() -> anyhow::Result<()> {
                 eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL;
         }
     }
+    // Latence minimale : CALAME_VSYNC=0 présente les images sans attendre le rafraîchissement de
+    // l'écran, au prix possible d'un déchirement. Par défaut, la synchronisation reste active.
+    if std::env::var("CALAME_VSYNC").is_ok_and(|v| v == "0") {
+        wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
+    }
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("Calame")
+        .with_app_id("calame")
+        .with_inner_size([1200.0, 800.0]);
+    if let Some(icon) = window_icon() {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Calame")
-            .with_inner_size([1200.0, 800.0]),
+        viewport,
         wgpu_options,
         ..Default::default()
     };
@@ -579,4 +601,22 @@ fn main() -> anyhow::Result<()> {
         Box::new(|cc| Ok(Box::new(CalameApp::new(cc)?))),
     )
     .map_err(|e| anyhow!("échec du lancement de la fenêtre : {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    #[test]
+    fn the_embedded_window_icon_is_a_valid_square_image() {
+        let icon = window_icon().expect("icône lisible");
+        assert_eq!(icon.width, icon.height);
+        assert_eq!(icon.rgba.len(), (icon.width * icon.height * 4) as usize);
+        // Le fond arrondi est opaque au centre et transparent dans le coin.
+        let at = |x: u32, y: u32| icon.rgba[((y * icon.width + x) * 4 + 3) as usize];
+        assert_eq!(at(icon.width / 2, icon.height - 40), 255);
+        assert_eq!(at(0, 0), 0);
+    }
 }

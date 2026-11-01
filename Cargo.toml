@@ -13,3 +13,13 @@ rust-version = "1.80"
 [workspace.lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+[profile.release]
+# Binaire plus petit : les symboles de débogage sont retirés.
+strip = true
+
+# Pour les paquets distribués : cargo build --profile dist -p calame-app
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1

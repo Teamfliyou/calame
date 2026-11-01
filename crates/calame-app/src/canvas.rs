@@ -13,6 +13,7 @@ use egui::{Color32, FontId, Mesh, Painter, Pos2, Rect, Sense, Shape, Vec2};
 use uuid::Uuid;
 
 use crate::instruments_ui;
+use crate::render_cache::{RenderCache, SMOOTHING};
 use crate::tools::{Tool, ToolSettings};
 
 /// Vue sur la page infinie : `offset` est le point de page affiché au coin haut-gauche.
@@ -151,6 +152,8 @@ pub struct Canvas {
     active_instrument: Option<usize>,
     /// Centre de la zone visible, en coordonnées de page : là où apparaissent les nouveaux instruments.
     viewport_center: Point2,
+    /// Lissage et rectangles englobants des traits, calculés une fois (voir `render_cache`).
+    render_cache: RenderCache,
     /// Dernière forme reconnue, affichée un instant pour indiquer comment l'annuler.
     notice: Option<(ShapeKind, Instant)>,
 }
@@ -166,6 +169,7 @@ impl Default for Canvas {
             instruments: Vec::new(),
             active_instrument: None,
             viewport_center: Point2::default(),
+            render_cache: RenderCache::default(),
             notice: None,
         }
     }
@@ -659,7 +663,12 @@ impl Canvas {
             Gesture::EraseStroke { hits, last, .. } => {
                 for q in sweep(*last, p, radius * 0.5) {
                     for item in &cx.page.items {
-                        if item.hit(q, radius) {
+                        // Rejet rapide par le rectangle englobant, avant le test précis.
+                        let near = self
+                            .render_cache
+                            .bounds(item)
+                            .map_or(true, |b| b.expand(radius).contains(q));
+                        if near && item.hit(q, radius) {
                             hits.insert(item.id());
                         }
                     }
@@ -668,7 +677,7 @@ impl Canvas {
             }
             Gesture::EraseArea { pieces, last, .. } => {
                 for q in sweep(*last, p, radius * 0.5) {
-                    erase_area_at(cx.page, pieces, q, radius);
+                    erase_area_at(cx.page, &self.render_cache, pieces, q, radius);
                 }
                 *last = p;
             }
@@ -840,7 +849,7 @@ impl Canvas {
             .filter(|i| self.selection.contains(&i.id()))
             .filter_map(|item| match transform {
                 Some(t) => item.transformed(&t).bounds(),
-                None => item.bounds(),
+                None => self.render_cache.bounds(item),
             })
             .reduce(Rect2::union)
     }
@@ -863,6 +872,12 @@ impl Canvas {
             _ => None,
         };
         let editing = self.text_edit.as_ref().and_then(|e| e.id);
+        // Zone de page visible : ce qui est en dehors n'est ni lissé ni dessiné.
+        let visible = Rect2 {
+            min: view.to_page(origin, rect.min),
+            max: view.to_page(origin, rect.max),
+        };
+        self.render_cache.prune(cx.page);
         for item in &cx.page.items {
             let id = item.id();
             if Some(id) == editing {
@@ -871,23 +886,32 @@ impl Canvas {
             if let Gesture::EraseArea { pieces, .. } = &self.gesture {
                 if let Some(list) = pieces.get(&id) {
                     for s in list {
-                        paint_stroke(painter, s, &s.smoothed(6), view, origin, 1.0);
+                        paint_stroke(painter, s, &s.smoothed(SMOOTHING), view, origin, 1.0);
                     }
                     continue;
                 }
             }
             let ghost =
                 matches!(&self.gesture, Gesture::EraseStroke { hits, .. } if hits.contains(&id));
+            let opacity = if ghost { 0.25 } else { 1.0 };
             let moved = transform
                 .filter(|_| self.selection.contains(&id))
                 .map(|t| item.transformed(&t));
-            paint_item(
-                painter,
-                moved.as_ref().unwrap_or(item),
-                view,
-                origin,
-                if ghost { 0.25 } else { 1.0 },
-            );
+            match (&moved, item) {
+                // Cas courant : un trait immobile, dont le lissage est en cache.
+                (None, Item::Stroke(s)) => {
+                    let cached = self.render_cache.get(s);
+                    if cached.bounds.is_some_and(|b| b.intersects(visible)) {
+                        paint_stroke(painter, s, &cached.smoothed, view, origin, opacity);
+                    }
+                }
+                _ => {
+                    let shown = moved.as_ref().unwrap_or(item);
+                    if shown.bounds().map_or(true, |b| b.intersects(visible)) {
+                        paint_item(painter, shown, view, origin, opacity);
+                    }
+                }
+            }
         }
 
         let to_screen = |p: Point2| view.to_screen(origin, p);
@@ -1038,6 +1062,7 @@ fn sweep(from: Point2, to: Point2, step: f32) -> impl Iterator<Item = Point2> {
 /// Applique la gomme de zone en `center` à tous les traits de la page, en cumulant dans `pieces`.
 fn erase_area_at(
     page: &Page,
+    cache: &RenderCache,
     pieces: &mut HashMap<Uuid, Vec<Stroke>>,
     center: Point2,
     radius: f32,
@@ -1047,28 +1072,45 @@ fn erase_area_at(
         let Item::Stroke(original) = item else {
             continue;
         };
-        let current = pieces
-            .get(&original.id)
-            .map_or(std::slice::from_ref(original), Vec::as_slice);
-        let mut next = Vec::with_capacity(current.len());
-        let mut changed = false;
-        for stroke in current {
-            let near = stroke
-                .bounds()
-                .is_some_and(|b| b.expand(radius).contains(center));
-            match near.then(|| stroke.erase_area(center, radius)).flatten() {
-                Some(parts) => {
-                    changed = true;
-                    next.extend(parts);
+        let next = match pieces.get(&original.id) {
+            // Déjà découpé pendant ce geste : on poursuit sur les morceaux restants.
+            Some(current) => erase_in(current, center, radius),
+            None => {
+                // Trait intact : le rectangle englobant en cache évite de le toucher s'il est loin.
+                let near = cache
+                    .get(original)
+                    .bounds
+                    .is_some_and(|b| b.expand(radius).contains(center));
+                if !near {
+                    continue;
                 }
-                None => next.push(stroke.clone()),
+                erase_in(std::slice::from_ref(original), center, radius)
             }
-        }
-        if changed {
+        };
+        if let Some(next) = next {
             updates.push((original.id, next));
         }
     }
     pieces.extend(updates);
+}
+
+/// Morceaux restants après la gomme, ou `None` si elle ne touche aucun de ces traits.
+fn erase_in(strokes: &[Stroke], center: Point2, radius: f32) -> Option<Vec<Stroke>> {
+    let mut next = Vec::with_capacity(strokes.len());
+    let mut changed = false;
+    for stroke in strokes {
+        let near = stroke
+            .bounds()
+            .is_some_and(|b| b.expand(radius).contains(center));
+        match near.then(|| stroke.erase_area(center, radius)).flatten() {
+            Some(parts) => {
+                changed = true;
+                next.extend(parts);
+            }
+            None => next.push(stroke.clone()),
+        }
+    }
+    changed.then_some(next)
 }
 
 /// Fond de la page affichée : motif généré, ou image (page de PDF importée, par exemple).
@@ -1226,13 +1268,65 @@ mod tests {
             items: vec![Item::Stroke(stroke)],
         };
         let mut pieces = HashMap::new();
-        erase_area_at(&page, &mut pieces, Point2::new(10.0, 0.0), 2.0);
+        let cache = RenderCache::default();
+        erase_area_at(&page, &cache, &mut pieces, Point2::new(10.0, 0.0), 2.0);
         assert_eq!(pieces[&id].len(), 2);
         // Un second passage sur le morceau de droite le découpe encore.
-        erase_area_at(&page, &mut pieces, Point2::new(30.0, 0.0), 2.0);
+        erase_area_at(&page, &cache, &mut pieces, Point2::new(30.0, 0.0), 2.0);
         assert_eq!(pieces[&id].len(), 3);
         // Loin du trait : rien ne change.
-        erase_area_at(&page, &mut pieces, Point2::new(20.0, 80.0), 2.0);
+        erase_area_at(&page, &cache, &mut pieces, Point2::new(20.0, 80.0), 2.0);
         assert_eq!(pieces[&id].len(), 3);
+    }
+}
+
+/// Mesures de la gomme sur une grande page : `cargo test --release -p calame-app -- --ignored --nocapture`.
+#[cfg(test)]
+mod perf {
+    use std::time::Instant;
+
+    use super::*;
+    use crate::render_cache::perf::big_page;
+
+    #[test]
+    #[ignore = "mesure de performance"]
+    fn eraser_on_a_large_page() {
+        let page = big_page(5000, 200);
+        let cache = RenderCache::default();
+        for item in &page.items {
+            cache.bounds(item);
+        }
+        // Passage de la gomme au milieu de la page, échantillon par échantillon.
+        let mut pieces = HashMap::new();
+        let start = Instant::now();
+        let samples = 200;
+        for k in 0..samples {
+            let center = Point2::new(3000.0 + k as f32 * 2.0, 1200.0);
+            erase_area_at(&page, &cache, &mut pieces, center, 8.0);
+        }
+        let per_sample = start.elapsed() / samples;
+        eprintln!(
+            "PERF gomme de zone sur 5000 traits : {per_sample:?} par échantillon ({} traits découpés)",
+            pieces.len()
+        );
+        // Trait entier : même balayage avec test précis après rejet par rectangle englobant.
+        let mut hits = HashSet::new();
+        let start = Instant::now();
+        for k in 0..samples {
+            let q = Point2::new(3000.0 + k as f32 * 2.0, 1200.0);
+            for item in &page.items {
+                let near = cache
+                    .bounds(item)
+                    .map_or(true, |b| b.expand(8.0).contains(q));
+                if near && item.hit(q, 8.0) {
+                    hits.insert(item.id());
+                }
+            }
+        }
+        eprintln!(
+            "PERF gomme de trait sur 5000 traits : {:?} par échantillon ({} touchés)",
+            start.elapsed() / samples,
+            hits.len()
+        );
     }
 }

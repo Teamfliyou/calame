@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Calame
+GenericName=Prise de notes manuscrites
+Comment=Prise de notes manuscrites pour stylets et tablettes graphiques
+Exec=calame
+Icon=calame
+Terminal=false
+Categories=Office;Education;Graphics;
+Keywords=notes;stylet;manuscrit;PDF;
+StartupWMClass=calame

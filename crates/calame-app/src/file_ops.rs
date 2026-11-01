@@ -4,12 +4,12 @@
 use calame_core::background::PATTERN_BACKGROUNDS;
 use calame_core::{Background, NodeId, NodeKind, Page};
 use calame_export::{import_image, BackgroundImage, PageBackground};
-use calame_storage::ImportedPage;
+use calame_storage::{restore_backup, ImportedPage, Store};
 
 use crate::canvas::Backdrop;
 use crate::files::{
-    export_pages, render_pdf_file, sanitize_file_name, Destination, ExportFormat, ExportPage, Task,
-    TaskResult,
+    backup_file_name, export_pages, render_pdf_file, sanitize_file_name, Destination, ExportFormat,
+    ExportPage, Task, TaskResult,
 };
 use crate::i18n::t;
 use crate::CalameApp;
@@ -32,6 +32,8 @@ impl CalameApp {
         let has_page = self.current.is_some();
         let mut export = None;
         let mut import_pdf = false;
+        let mut backup = false;
+        let mut restore = false;
         let mut import_image = false;
         let mut new_background = None;
         egui::MenuBar::new().ui(ui, |ui| {
@@ -54,6 +56,15 @@ impl CalameApp {
                         }
                     });
                 });
+                ui.separator();
+                if ui.button(t("backup")).clicked() {
+                    backup = true;
+                    ui.close();
+                }
+                if ui.button(t("restore-backup")).clicked() {
+                    restore = true;
+                    ui.close();
+                }
             });
             ui.add_enabled_ui(has_page, |ui| {
                 ui.menu_button(t("menu-background"), |ui| {
@@ -86,6 +97,12 @@ impl CalameApp {
             if let Some(target) = self.import_target() {
                 self.import_pdf(target);
             }
+        }
+        if backup {
+            self.backup_library();
+        }
+        if restore {
+            self.restore_library(ui.ctx());
         }
         if let (Some(format), Some(open)) = (export, &self.current) {
             let id = open.id;
@@ -307,6 +324,88 @@ impl CalameApp {
                 Err(message) => TaskResult::Failed(message),
             },
         ));
+    }
+
+    // ---- Sauvegarde et restauration -----------------------------------------------------
+
+    fn backup_library(&mut self) {
+        // La page ouverte doit être dans la base avant d'en prendre une copie.
+        self.save_current();
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(t("backup"))
+            .set_file_name(backup_file_name(seconds))
+            .add_filter("zip", &["zip"])
+            .save_file()
+        else {
+            return;
+        };
+        let result = self.store.backup_to(&path);
+        if self.report(result).is_some() {
+            self.status = Some(format!("Bibliothèque sauvegardée : {}", path.display()));
+        }
+    }
+
+    fn restore_library(&mut self, ctx: &egui::Context) {
+        if self.task.is_some() {
+            self.error = Some(t("busy").into());
+            return;
+        }
+        let Some(zip) = rfd::FileDialog::new()
+            .set_title(t("restore-backup"))
+            .add_filter("zip", &["zip"])
+            .pick_file()
+        else {
+            return;
+        };
+        let confirmed = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_title(t("restore-backup"))
+            .set_description(t("restore-confirm"))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::Yes;
+        if !confirmed {
+            return;
+        }
+        self.close_current();
+        // Le fichier de la base doit être libéré avant d'être remplacé.
+        let placeholder = Store::open_in_memory();
+        let Some(placeholder) = self.report(placeholder) else {
+            return;
+        };
+        drop(std::mem::replace(&mut self.store, placeholder));
+
+        let path = crate::database_path();
+        let restored = restore_backup(&zip, &path);
+        // Dans tous les cas on rouvre la base : la restaurée, ou l'ancienne si la restauration a échoué.
+        let reopened = Store::open(&path);
+        let Some(store) = self.report(reopened) else {
+            return;
+        };
+        self.store = store;
+        self.histories.clear();
+        self.textures.clear();
+        self.current = None;
+        self.background = Background::Blank;
+        self.refresh();
+        match restored {
+            Ok(previous) => {
+                if let Some(first) = self.tree.first_page() {
+                    self.open_page(ctx, first);
+                }
+                self.status = Some(match previous {
+                    Some(old) => format!(
+                        "Bibliothèque restaurée. L'ancienne est conservée : {}",
+                        old.display()
+                    ),
+                    None => "Bibliothèque restaurée.".into(),
+                });
+            }
+            Err(e) => self.error = Some(e.to_string()),
+        }
     }
 
     // ---- Import de PDF ---------------------------------------------------------------

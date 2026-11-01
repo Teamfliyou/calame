@@ -44,6 +44,32 @@ pub enum Destination {
     Folder(PathBuf),
 }
 
+/// Nom proposé pour une sauvegarde : `calame-sauvegarde-AAAA-MM-JJ.zip`.
+pub fn backup_file_name(unix_seconds: u64) -> String {
+    let (year, month, day) = civil_from_days((unix_seconds / 86_400) as i64);
+    format!("calame-sauvegarde-{year:04}-{month:02}-{day:02}.zip")
+}
+
+/// Date civile (année, mois, jour) à partir du nombre de jours écoulés depuis le 1er janvier 1970
+/// (algorithme de Howard Hinnant, valable pour tout le calendrier grégorien).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * shifted_month + 2) / 5 + 1) as u32;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    } as u32;
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (year, month, day)
+}
+
 /// Remplace les caractères interdits dans un nom de fichier.
 pub fn sanitize_file_name(name: &str) -> String {
     let cleaned: String = name
@@ -210,6 +236,29 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("calame-files-{tag}-{}", NodeId::new()));
         fs::create_dir_all(&dir).expect("dossier");
         dir
+    }
+
+    #[test]
+    fn backup_names_carry_the_date() {
+        assert_eq!(backup_file_name(0), "calame-sauvegarde-1970-01-01.zip");
+        assert_eq!(
+            backup_file_name(1_000_000_000),
+            "calame-sauvegarde-2001-09-09.zip"
+        );
+        assert_eq!(
+            backup_file_name(19_723 * 86_400),
+            "calame-sauvegarde-2024-01-01.zip"
+        );
+        // 29 février d'une année bissextile, et jour suivant.
+        assert_eq!(
+            backup_file_name(19_782 * 86_400 + 5),
+            "calame-sauvegarde-2024-02-29.zip"
+        );
+        assert_eq!(
+            backup_file_name(19_783 * 86_400),
+            "calame-sauvegarde-2024-03-01.zip"
+        );
+        assert_eq!(backup_file_name(86_399), "calame-sauvegarde-1970-01-01.zip");
     }
 
     #[test]
