@@ -342,7 +342,10 @@ pub fn shortcuts_window(
         }
     }
 
-    let mut rows: Vec<Target> = TOOL_TARGETS.iter().map(|tool| Target::Tool(*tool)).collect();
+    let mut rows: Vec<Target> = TOOL_TARGETS
+        .iter()
+        .map(|tool| Target::Tool(*tool))
+        .collect();
     rows.extend((0..tools.pens.len()).map(Target::Pen));
 
     egui::Window::new(t("shortcuts"))
@@ -357,9 +360,7 @@ pub fn shortcuts_window(
         )
         .show(ctx, |ui| {
             ui.set_width(460.0);
-            ui.label(
-                egui::RichText::new(t("shortcuts-hint")).color(theme::label_secondary(dark)),
-            );
+            ui.label(egui::RichText::new(t("shortcuts-hint")).color(theme::label_secondary(dark)));
             if let Some(key) = *message {
                 ui.colored_label(theme::danger(dark), t(key));
             }
@@ -460,7 +461,11 @@ mod tests {
         };
         s.set(Target::Pen(2), chord);
         s.set(Target::Tool(Tool::Lasso), chord);
-        assert_eq!(s.get(Target::Pen(2)), None, "la combinaison a changé de main");
+        assert_eq!(
+            s.get(Target::Pen(2)),
+            None,
+            "la combinaison a changé de main"
+        );
         s.set(Target::Pen(0), Chord::plain(Key::P));
         assert_eq!(s.get(Target::Tool(Tool::Pen)), None);
 
@@ -469,6 +474,8 @@ mod tests {
         s.clear(Target::Tool(Tool::Text));
         assert_eq!(ToolShortcuts::from_setting(&s.to_setting()), s);
         assert!(ToolShortcuts::from_setting("").bindings.is_empty());
-        assert!(ToolShortcuts::from_setting("pen=ctrl+P;foo=Q;lasso=zzz").bindings.is_empty());
+        assert!(ToolShortcuts::from_setting("pen=ctrl+P;foo=Q;lasso=zzz")
+            .bindings
+            .is_empty());
     }
 }

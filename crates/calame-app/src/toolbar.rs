@@ -190,10 +190,16 @@ fn dock_anchor(editor: &EditorUi, gap: f32) -> (Align2, [f32; 2]) {
     let margin = 16.0;
     match (position.is_top(), position.side()) {
         (true, -1) => (Align2::LEFT_TOP, [editor.canvas_left + margin, y]),
-        (true, 1) => (Align2::RIGHT_TOP, [-(editor.canvas_right_inset + margin), y]),
+        (true, 1) => (
+            Align2::RIGHT_TOP,
+            [-(editor.canvas_right_inset + margin), y],
+        ),
         (true, _) => (Align2::CENTER_TOP, [0.0, y]),
         (false, -1) => (Align2::LEFT_BOTTOM, [editor.canvas_left + margin, y]),
-        (false, 1) => (Align2::RIGHT_BOTTOM, [-(editor.canvas_right_inset + margin), y]),
+        (false, 1) => (
+            Align2::RIGHT_BOTTOM,
+            [-(editor.canvas_right_inset + margin), y],
+        ),
         (false, _) => (Align2::CENTER_BOTTOM, [0.0, y]),
     }
 }
@@ -500,11 +506,7 @@ fn more_menu(ui: &mut Ui, state: &EditorState, commands: &mut Vec<Command>) {
 
 const TOOLS: [(Tool, Icon, &str); 7] = [
     (Tool::Pen, Icon::Pen, "tool-pen"),
-    (
-        Tool::Highlighter,
-        Icon::Highlighter,
-        "tool-highlighter",
-    ),
+    (Tool::Highlighter, Icon::Highlighter, "tool-highlighter"),
     (Tool::EraserStroke, Icon::EraserStroke, "tool-eraser"),
     (Tool::Lasso, Icon::Lasso, "tool-lasso"),
     (Tool::Text, Icon::Text, "tool-text"),
@@ -600,7 +602,14 @@ pub fn dock(
     dark: bool,
 ) -> Vec<Command> {
     let mut commands = Vec::new();
-    let (align, offset) = dock_anchor(editor, if editor.dock_position.is_top() { 16.0 } else { 20.0 });
+    let (align, offset) = dock_anchor(
+        editor,
+        if editor.dock_position.is_top() {
+            16.0
+        } else {
+            20.0
+        },
+    );
     egui::Area::new(egui::Id::unique("calame-dock"))
         .anchor(align, offset)
         .order(egui::Order::Middle)
@@ -667,7 +676,14 @@ pub fn mini_dock(
     can_undo: bool,
 ) -> Vec<Command> {
     let mut commands = Vec::new();
-    let (align, offset) = dock_anchor(editor, if editor.dock_position.is_top() { 16.0 } else { 22.0 });
+    let (align, offset) = dock_anchor(
+        editor,
+        if editor.dock_position.is_top() {
+            16.0
+        } else {
+            22.0
+        },
+    );
     egui::Area::new(egui::Id::unique("calame-mini-dock"))
         .anchor(align, offset)
         .show(ctx, |ui| {

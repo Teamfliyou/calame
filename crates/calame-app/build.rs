@@ -38,7 +38,10 @@ fn embed_with_windres(icon: &Path) -> Result<(), String> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").map_err(|error| error.to_string())?);
     let icon = icon.canonicalize().map_err(|error| error.to_string())?;
     let icon = icon.to_string_lossy();
-    let icon = icon.strip_prefix(r"\\?\").unwrap_or(&icon).replace('\\', "/");
+    let icon = icon
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&icon)
+        .replace('\\', "/");
 
     let script = out_dir.join("calame-icon.rc");
     std::fs::write(&script, format!("1 ICON \"{icon}\"\n")).map_err(|error| error.to_string())?;
