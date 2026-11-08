@@ -1,19 +1,36 @@
 //! Fonds de page, import et export, sauvegarde : la partie de l'application qui touche aux
 //! fichiers et aux images.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use calame_core::{Background, NodeId, NodeKind, Page};
-use calame_export::{import_image, BackgroundImage, PageBackground};
-use calame_storage::{restore_backup, ImportedPage, Store};
+use calame_core::{AssetId, Background, Item, NodeId, NodeKind, Page};
+use calame_export::{import_image, BackgroundImage, ImportedImage, PageBackground, PageImages};
+use calame_storage::{restore_backup, Asset, ImportedPage, Store};
 
 use crate::canvas::Backdrop;
 use crate::files::{
-    backup_file_name, export_pages, render_pdf_file, sanitize_file_name, Destination, ExportFormat,
-    ExportPage, Task, TaskResult,
+    backup_file_name, export_pages, print_pages, render_pdf_file, sanitize_file_name, Destination,
+    ExportFormat, ExportPage, Task, TaskResult,
 };
 use crate::i18n::t;
+use crate::tools::Tool;
 use crate::{CalameApp, Screen};
+
+/// Lit et vérifie un fichier image (PNG ou JPEG).
+fn read_image_file(path: &Path) -> Result<ImportedImage, String> {
+    std::fs::read(path)
+        .map_err(|e| format!("Lecture de {} impossible : {e}", path.display()))
+        .and_then(|bytes| import_image(bytes).map_err(|e| e.to_string()))
+}
+
+fn export_image(asset: Asset) -> BackgroundImage {
+    BackgroundImage {
+        mime: asset.mime,
+        data: asset.data,
+        width: asset.width,
+        height: asset.height,
+    }
+}
 
 impl CalameApp {
     /// Où ranger un PDF importé : dans un cahier, le dossier de la page ouverte (ou le cahier) ;
@@ -53,7 +70,7 @@ impl CalameApp {
         }
     }
 
-    fn ensure_texture(&mut self, ctx: &egui::Context, asset: calame_core::AssetId) {
+    fn ensure_texture(&mut self, ctx: &egui::Context, asset: AssetId) {
         if self.textures.contains_key(&asset) {
             return;
         }
@@ -67,7 +84,7 @@ impl CalameApp {
                 let size = [rgba.width() as usize, rgba.height() as usize];
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
                 let texture = ctx.load_texture(
-                    format!("fond-{asset}"),
+                    format!("image-{asset}"),
                     color_image,
                     egui::TextureOptions::LINEAR,
                 );
@@ -76,7 +93,82 @@ impl CalameApp {
                     (texture, egui::vec2(asset_data.width, asset_data.height)),
                 );
             }
-            Err(e) => self.error = Some(format!("Image de fond illisible : {e}")),
+            Err(e) => self.error = Some(format!("Image illisible : {e}")),
+        }
+    }
+
+    // ---- Images posées sur la page -------------------------------------------------------
+
+    /// Charge les textures des images de la page ouverte qui n'en ont pas encore. Une image
+    /// illisible n'est signalée qu'une fois, et non à chaque image affichée.
+    pub(crate) fn load_page_images(&mut self, ctx: &egui::Context) {
+        let Some(open) = &self.current else {
+            return;
+        };
+        let missing: Vec<AssetId> = open
+            .page
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Image(image) => Some(image.asset),
+                _ => None,
+            })
+            .filter(|asset| {
+                !self.textures.contains_key(asset) && !self.unreadable_images.contains(asset)
+            })
+            .collect();
+        for asset in missing {
+            self.ensure_texture(ctx, asset);
+            if !self.textures.contains_key(&asset) {
+                self.unreadable_images.insert(asset);
+            }
+        }
+    }
+
+    /// Contenu des images posées parmi ces éléments. Une image introuvable est omise.
+    pub(crate) fn page_images(&self, items: &[Item]) -> PageImages {
+        items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Image(image) => Some(image.asset),
+                _ => None,
+            })
+            .filter_map(|id| Some((id, export_image(self.store.asset(id).ok()?))))
+            .collect()
+    }
+
+    /// Enregistre une image et la pose au centre de la zone visible, sélectionnée.
+    pub(crate) fn place_image(&mut self, image: &ImportedImage) {
+        if self.current.is_none() {
+            return;
+        }
+        let stored = self
+            .store
+            .add_asset(&image.mime, image.width, image.height, &image.data);
+        let Some(asset) = self.report(stored) else {
+            return;
+        };
+        if let Some(o) = &mut self.current {
+            // La sélection se manipule au lasso.
+            self.tools.tool = Tool::Lasso;
+            self.canvas.sync_tool(Tool::Lasso);
+            self.canvas.add_image(
+                &mut o.page,
+                &mut o.history,
+                asset,
+                image.width,
+                image.height,
+            );
+        }
+        // Tout de suite : tant que la page ne la référence pas, l'image pourrait être purgée.
+        self.save_current();
+    }
+
+    /// Pose sur la page ouverte une image déposée sur la fenêtre.
+    pub(crate) fn place_image_file(&mut self, path: &Path) {
+        match read_image_file(path) {
+            Ok(image) => self.place_image(&image),
+            Err(message) => self.error = Some(message),
         }
     }
 
@@ -112,10 +204,7 @@ impl CalameApp {
         else {
             return;
         };
-        let imported = std::fs::read(&path)
-            .map_err(|e| format!("Lecture de {} impossible : {e}", path.display()))
-            .and_then(|bytes| import_image(bytes).map_err(|e| e.to_string()));
-        let image = match imported {
+        let image = match read_image_file(&path) {
             Ok(image) => image,
             Err(message) => {
                 self.error = Some(message);
@@ -164,13 +253,7 @@ impl CalameApp {
         let background = match self.store.background(id) {
             Ok(Background::Image(asset)) => {
                 let loaded = self.store.asset(asset);
-                let asset = self.report(loaded)?;
-                PageBackground::Image(BackgroundImage {
-                    mime: asset.mime,
-                    data: asset.data,
-                    width: asset.width,
-                    height: asset.height,
-                })
+                PageBackground::Image(export_image(self.report(loaded)?))
             }
             Ok(other) => PageBackground::Pattern(other),
             Err(e) => {
@@ -178,10 +261,12 @@ impl CalameApp {
                 return None;
             }
         };
+        let images = self.page_images(&page.items);
         Some(ExportPage {
             name,
             page,
             background,
+            images,
         })
     }
 
@@ -226,6 +311,42 @@ impl CalameApp {
             t("busy-export").into(),
             move || match export_pages(&pages, format, &destination) {
                 Ok(message) => TaskResult::Message(message),
+                Err(message) => TaskResult::Failed(message),
+            },
+        ));
+    }
+
+    /// Imprime un élément : ses pages s'ouvrent en PDF, découpées en feuilles A4, dans le lecteur de
+    /// PDF du système.
+    pub(crate) fn print_node(&mut self, id: NodeId) {
+        if self.task.is_some() {
+            self.error = Some(t("busy").into());
+            return;
+        }
+        let page_ids = self.pages_under(id);
+        let Some(node_name) = self.tree.get(id).map(|n| n.name.clone()) else {
+            return;
+        };
+        if page_ids.is_empty() {
+            self.error = Some(t("nothing-to-export").into());
+            return;
+        }
+        let pages: Vec<ExportPage> = page_ids
+            .into_iter()
+            .filter_map(|page| self.export_page_data(page))
+            .collect();
+        // Un nom à chaque fois différent : le lecteur de PDF garde souvent le précédent verrouillé.
+        let file = format!(
+            "{} - impression {}.pdf",
+            sanitize_file_name(&node_name),
+            crate::unix_now()
+        );
+        let path = std::env::temp_dir().join(file);
+        self.status = None;
+        self.task = Some(Task::spawn(
+            t("busy-print").into(),
+            move || match print_pages(&pages, &path) {
+                Ok(()) => TaskResult::Message(t("print-ready").into()),
                 Err(message) => TaskResult::Failed(message),
             },
         ));
@@ -293,6 +414,7 @@ impl CalameApp {
         self.store = store;
         self.histories.clear();
         self.textures.clear();
+        self.unreadable_images.clear();
         self.thumbs.clear();
         self.current = None;
         self.background = Background::Blank;

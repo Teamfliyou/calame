@@ -1,4 +1,5 @@
-//! Import de PDF (rendu page par page) et d'images, pour servir de fond de page.
+//! Import de PDF (rendu page par page) et d'images, pour servir de fond de page ou être posées
+//! sur la page.
 
 use std::io::Cursor;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -8,7 +9,7 @@ use calame_core::background::PAGE_WIDTH;
 use hayro::hayro_interpret::InterpreterSettings;
 use hayro::hayro_syntax::{Pdf, PdfData};
 use hayro::{render, RenderCache, RenderSettings};
-use image::{ImageFormat, ImageReader, RgbaImage};
+use image::{imageops, ImageFormat, ImageReader, RgbaImage};
 
 use crate::{ExportError, Result};
 
@@ -18,6 +19,9 @@ const MAX_PAGES: usize = 500;
 const MAX_RENDER_SIDE: f32 = 6000.0;
 /// Taille maximale d'une image importée : 40 Mo.
 const MAX_IMAGE_BYTES: usize = 40 * 1024 * 1024;
+/// Côté maximal d'une image collée, en pixels : au-delà, elle est réduite (elle doit aussi tenir
+/// dans une texture de la carte graphique).
+const MAX_PASTED_SIDE: u32 = 4096;
 /// Une unité de page (1/96 pouce) fait 0,75 point (1/72 pouce).
 const POINTS_PER_UNIT: f32 = 0.75;
 
@@ -35,7 +39,7 @@ pub struct RenderedPage {
 pub struct ImportedImage {
     pub mime: String,
     pub data: Vec<u8>,
-    /// Taille en unités de page : la largeur d'une page A4, à la même proportion que l'image.
+    /// Taille en unités de page.
     pub width: f32,
     pub height: f32,
 }
@@ -114,7 +118,31 @@ fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Vérifie qu'une image PNG ou JPEG se lit et calcule sa taille en unités de page.
+/// Encode en PNG une image du presse-papiers (pixels RGBA) ; un pixel y vaut une unité de page.
+pub fn pasted_image(width: u32, height: u32, rgba: Vec<u8>) -> Result<ImportedImage> {
+    if width == 0 || height == 0 {
+        return Err(ExportError::Import("image vide".into()));
+    }
+    let side = width.max(height);
+    let data = if side > MAX_PASTED_SIDE {
+        let image = RgbaImage::from_raw(width, height, rgba)
+            .ok_or_else(|| ExportError::Import("dimensions d'image incohérentes".into()))?;
+        let fit = |v: u32| (u64::from(v) * u64::from(MAX_PASTED_SIDE) / u64::from(side)).max(1);
+        let small = imageops::thumbnail(&image, fit(width) as u32, fit(height) as u32);
+        encode_png(small.width(), small.height(), small.into_raw())?
+    } else {
+        encode_png(width, height, rgba)?
+    };
+    Ok(ImportedImage {
+        mime: "image/png".into(),
+        data,
+        width: width as f32,
+        height: height as f32,
+    })
+}
+
+/// Vérifie qu'une image PNG ou JPEG se lit et calcule sa taille en unités de page : la largeur
+/// d'une page A4, à la même proportion que l'image.
 pub fn import_image(bytes: Vec<u8>) -> Result<ImportedImage> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err(ExportError::Import(

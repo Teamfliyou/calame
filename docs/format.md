@@ -4,7 +4,7 @@ La bibliothèque est un fichier **SQLite** unique (`calame.db`), en mode WAL.
 Sous Windows : `%APPDATA%\calame\Calame\data\calame.db`. La variable d'environnement `CALAME_DB` permet
 de choisir un autre fichier.
 
-La version du schéma est dans `PRAGMA user_version` (actuellement **3**). Une base créée par une
+La version du schéma est dans `PRAGMA user_version` (actuellement **4**). Une base créée par une
 version plus récente est refusée plutôt qu'abîmée.
 
 ## Table `nodes` : la hiérarchie
@@ -37,22 +37,23 @@ limite. Mettre un élément à la corbeille marque tout son sous-arbre ; le rest
 
 Une page sans ligne dans `page_data` est une page vide. Le modèle sérialisé est `calame_core::Page` : une liste d'éléments, soit un trait (pinceau, couleur,
 épaisseur, points avec pression et inclinaison), soit une zone de texte (position, texte, corps,
-couleur, angle, dimensions mesurées). Les pages au format 1 sont converties à la lecture et
-réécrites au format 2 au prochain enregistrement.
+couleur, angle, dimensions mesurées), soit une image (identifiant dans `assets`, position, dimensions,
+angle). Les pages au format 1 sont converties à la lecture et réécrites au format 2 au prochain
+enregistrement.
 
 ## Table `settings` : les réglages
 
 Paires clé/valeur en texte (`favorites` : couleurs `#rrggbb` séparées par des virgules ;
 `dark` : `1` ou `0` ; `shapes` : `1` si la reconnaissance automatique de formes est active). Ajoutée par le schéma 2.
 
-## Table `assets` : les images de fond
+## Table `assets` : les images
 
-Ajoutée par le schéma 3. Chaque ligne est une image (PNG ou JPEG) servant de fond à une ou plusieurs
-pages : photo importée, ou page de PDF rendue en PNG.
+Ajoutée par le schéma 3. Chaque ligne est une image (PNG ou JPEG) : fond d'une ou plusieurs pages
+(photo importée, page de PDF rendue en PNG), ou image posée sur une page (collée ou déposée).
 
 | Colonne | Type | Rôle |
 |---|---|---|
-| `id` | TEXT, clé | UUID, référencé par `nodes.background` (`asset:<uuid>`) |
+| `id` | TEXT, clé | UUID, référencé par `nodes.background` (`asset:<uuid>`) ou par `page_assets` |
 | `mime` | TEXT | `image/png` ou `image/jpeg` |
 | `width`, `height` | REAL | Taille en unités de page (1 unité = 1/96 pouce) |
 | `data` | BLOB | Octets de l'image |
@@ -61,8 +62,27 @@ pages : photo importée, ou page de PDF rendue en PNG.
 Une image qu'aucune page n'utilise plus est supprimée automatiquement. Dupliquer une page partage
 l'image au lieu de la copier.
 
+## Table `page_assets` : les images posées sur les pages
+
+Ajoutée par le schéma 4. Le contenu des pages est sérialisé : SQLite ne peut pas y lire quelles images
+sont utilisées. Cette table le recopie, pour que la purge des images les épargne.
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `page_id` | TEXT | Référence `nodes.id` (suppression en cascade) |
+| `asset_id` | TEXT | UUID de l'image dans `assets` |
+
+Une ligne est ajoutée quand une page est enregistrée avec une image, et n'est pas retirée quand l'image
+quitte la page : « Annuler » doit pouvoir la ramener. L'image reste donc dans la base jusqu'à la
+suppression définitive de la dernière page qui l'a utilisée.
+
 ## Unités et zone d'une page
 
 La page n'a pas de bord : on écrit où l'on veut, sans limite en hauteur. Les coordonnées sont en
 unités de page (1 unité = 1/96 pouce, soit 0,2646 mm). À l'export, la zone est la page A4
-(793,7 × 1122,5 unités), ou l'image de fond, élargie à tout le contenu qui déborde (marge de 24 unités).
+(793,7 × 1122,5 unités), ou l'image de fond, élargie du côté où le contenu déborde (marge de 24 unités).
+
+En PDF, une page qui tient sur une feuille A4, dans un sens ou dans l'autre, garde sa taille. Les autres
+sont découpées en feuilles A4 : réduites à la largeur de la feuille si la réduction ne dépasse pas la
+moitié, en A4 paysage si elles sont plus larges que hautes, en colonnes à taille réelle si elles sont
+beaucoup trop larges.

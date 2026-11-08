@@ -33,8 +33,9 @@ connexion. Voir les [limites connues](#limites-connues).
 
 **Pages et fichiers**
 - Fonds de page : uni, petits et grands carreaux, lignes, pointillés, isométrique, image.
-- Import d'un PDF pour l'annoter ; import d'images en fond.
-- Export d'une page, d'un cahier, d'un dossier ou d'une matière en PDF vectoriel, PNG ou SVG.
+- Import d'un PDF pour l'annoter ; import d'images en fond ; images collées (Ctrl V) ou déposées sur la page.
+- Export d'une page, d'un cahier, d'un dossier ou d'une matière en PDF vectoriel (découpé en feuilles A4),
+  PNG ou SVG ; impression (Ctrl P) par le lecteur de PDF du système.
 - Thèmes clair et sombre (encre éclaircie à l'affichage sur papier sombre) ; interface en français,
   polices Instrument Sans et Bricolage Grotesque.
 

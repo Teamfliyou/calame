@@ -1,21 +1,23 @@
-//! Export des pages en SVG, PNG et PDF, et import de PDF et d'images comme fonds de page.
+//! Export des pages en SVG, PNG et PDF, et import de PDF et d'images.
 //!
 //! Tout est fait en Rust, sans programme externe : la page est d'abord décrite en SVG, puis
-//! rastérisée en PNG (`resvg`) ou convertie en PDF vectoriel (`svg2pdf`). L'import d'un PDF
-//! rend chaque page en image (`hayro`) pour pouvoir l'annoter par-dessus.
+//! rastérisée en PNG (`resvg`) ou convertie en PDF vectoriel (`svg2pdf`), découpé en feuilles A4.
+//! L'import d'un PDF rend chaque page en image (`hayro`) pour pouvoir l'annoter par-dessus.
 
 mod import;
 mod pdf;
 mod raster;
 mod svg;
 
-use calame_core::Background;
+use std::collections::HashMap;
+
+use calame_core::{AssetId, Background};
 use thiserror::Error;
 
-pub use import::{import_image, render_pdf_pages, ImportedImage, RenderedPage};
+pub use import::{import_image, pasted_image, render_pdf_pages, ImportedImage, RenderedPage};
 pub use pdf::svgs_to_pdf;
-pub use raster::svg_to_png;
-pub use svg::page_svg;
+pub use raster::{items_to_bitmap, svg_to_png, Bitmap};
+pub use svg::{page_svg, page_svg_with_images};
 
 #[derive(Debug, Error)]
 pub enum ExportError {
@@ -31,7 +33,8 @@ pub enum ExportError {
 
 pub type Result<T> = std::result::Result<T, ExportError>;
 
-/// Image de fond avec son contenu, prête à être dessinée ou exportée.
+/// Image avec son contenu (fond de page ou image posée sur la page), prête à être dessinée ou
+/// exportée.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BackgroundImage {
     /// `image/png` ou `image/jpeg`.
@@ -41,6 +44,9 @@ pub struct BackgroundImage {
     pub width: f32,
     pub height: f32,
 }
+
+/// Contenu des images posées sur une page.
+pub type PageImages = HashMap<AssetId, BackgroundImage>;
 
 /// Fond d'une page à exporter.
 #[derive(Clone, Debug, PartialEq)]

@@ -15,7 +15,7 @@ pub use history::History;
 pub use instruments::{
     snap, Edge, Handle, Instrument, InstrumentKind, Pose, UNITS_PER_CM, UNITS_PER_MM,
 };
-pub use item::{Item, TextBox};
+pub use item::{ImageBox, Item, TextBox};
 pub use library::{LibraryError, LibraryTree, Node, NodeId, NodeKind};
 pub use page::Page;
 pub use stroke::{Brush, BrushKind, Stroke, StrokePoint};

@@ -2,6 +2,8 @@
 
 use calame_core::{Brush, BrushKind, Color};
 
+use crate::shortcuts::ToolShortcuts;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Pen,
@@ -91,6 +93,8 @@ pub struct ToolSettings {
     pub pens: Vec<PenPreset>,
     /// Gomme reprise par le bouton du dock : de trait entier ou de zone.
     pub eraser: Tool,
+    /// Raccourcis clavier des outils et des stylos, réglés dans les paramètres.
+    pub shortcuts: ToolShortcuts,
 }
 
 impl Default for ToolSettings {
@@ -108,6 +112,7 @@ impl Default for ToolSettings {
             hex: DEFAULT_PENS[0].color.to_hex(),
             pens: DEFAULT_PENS.to_vec(),
             eraser: Tool::EraserStroke,
+            shortcuts: ToolShortcuts::default(),
         }
     }
 }

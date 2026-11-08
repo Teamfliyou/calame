@@ -4,11 +4,13 @@ use std::io::Cursor;
 
 use calame_core::background::{PAGE_HEIGHT, PAGE_WIDTH};
 use calame_core::{
-    Background, Brush, BrushKind, Color, Item, Page, Point2, Stroke, StrokePoint, TextBox,
+    AssetId, Background, Brush, BrushKind, Color, ImageBox, Item, Page, Point2, Stroke,
+    StrokePoint, TextBox,
 };
 use image::{ImageFormat, RgbaImage};
 
 use super::*;
+use crate::pdf::sheets_for;
 use crate::raster::parse;
 
 fn stroke(brush: Brush, points: &[(f32, f32)]) -> Item {
@@ -193,7 +195,107 @@ fn oversized_exports_are_refused() {
 }
 
 #[test]
-fn pdf_has_one_page_per_svg_with_their_own_size() {
+fn placed_images_are_drawn_where_they_sit() {
+    let asset = AssetId::new();
+    let images = PageImages::from([(
+        asset,
+        BackgroundImage {
+            mime: "image/png".into(),
+            data: solid_png(4, 4, [220, 20, 20]),
+            width: 100.0,
+            height: 50.0,
+        },
+    )]);
+    let page = Page {
+        items: vec![Item::Image(ImageBox::new(
+            asset,
+            Point2::new(200.0, 300.0),
+            100.0,
+            50.0,
+        ))],
+    };
+    let bg = PageBackground::Pattern(Background::Blank);
+    let svg = page_svg_with_images(&page, &bg, &images);
+    let img = decode(&svg_to_png(&svg, 1.0).expect("PNG"));
+    let [r, g, _] = px(&img, 250.0, 325.0);
+    assert!(r > 200 && g < 60, "image rouge attendue : {r} {g}");
+    assert_eq!(px(&img, 150.0, 325.0), [255, 255, 255]);
+
+    // Sans son contenu, l'image est omise : la page reste exportable.
+    let img = decode(&svg_to_png(&page_svg(&page, &bg), 1.0).expect("PNG"));
+    assert_eq!(px(&img, 250.0, 325.0), [255, 255, 255]);
+}
+
+#[test]
+fn copied_items_are_rendered_alone_on_opaque_white() {
+    let items = [thick_black(&[(100.0, 100.0), (300.0, 100.0)])];
+    let bitmap = items_to_bitmap(&items, &PageImages::new())
+        .expect("rendu")
+        .expect("image");
+    // Le trait occupe 200 unités sur 12, à 2 pixels par unité, plus les marges : pas la page entière.
+    assert!(bitmap.width < 500 && bitmap.height < 100);
+    assert_eq!(
+        bitmap.rgba.len(),
+        (bitmap.width * bitmap.height * 4) as usize
+    );
+    assert!(bitmap.rgba.chunks_exact(4).all(|p| p[3] == 255));
+    assert!(bitmap.rgba.chunks_exact(4).any(|p| p[0] < 40));
+    assert!(items_to_bitmap(&[], &PageImages::new())
+        .expect("rendu")
+        .is_none());
+}
+
+#[test]
+fn a_page_is_cut_into_as_many_a4_sheets_as_it_needs() {
+    // Elle tient sur une feuille : elle garde sa taille.
+    let a4 = sheets_for(PAGE_WIDTH, PAGE_HEIGHT);
+    assert_eq!((a4.columns, a4.rows, a4.scale), (1, 1, 1.0));
+    let small = sheets_for(400.0, 600.0);
+    assert_eq!((small.width, small.height, small.rows), (400.0, 600.0, 1));
+
+    // Plus haute qu'une feuille : autant de feuilles A4 qu'il faut, à taille réelle.
+    let tall = sheets_for(PAGE_WIDTH, 3000.0);
+    assert_eq!((tall.width, tall.height), (PAGE_WIDTH, PAGE_HEIGHT));
+    assert_eq!((tall.columns, tall.rows, tall.scale), (1, 3, 1.0));
+
+    // Un peu trop large : réduite à la largeur de la feuille, plutôt que coupée en colonnes.
+    let wide = sheets_for(900.0, 2000.0);
+    assert_eq!((wide.columns, wide.rows), (1, 2));
+    assert!((wide.scale - PAGE_WIDTH / 900.0).abs() < 1e-4);
+
+    // Plus large que haute : A4 paysage.
+    let slide = sheets_for(1280.0, 720.0);
+    assert_eq!((slide.width, slide.height), (PAGE_HEIGHT, PAGE_WIDTH));
+    assert_eq!((slide.columns, slide.rows), (1, 1));
+
+    // Beaucoup trop large pour être réduite : découpée en colonnes, à taille réelle.
+    let huge = sheets_for(5000.0, 700.0);
+    assert_eq!((huge.columns, huge.rows, huge.scale), (5, 1, 1.0));
+}
+
+#[test]
+fn a_tall_page_gives_a4_sheets_that_continue_each_other() {
+    let tall = Page {
+        items: vec![thick_black(&[(100.0, 100.0), (100.0, 3000.0)])],
+    };
+    let svg = page_svg(&tall, &PageBackground::Pattern(Background::Blank));
+    let sheets = render_pdf_pages(svgs_to_pdf(&[svg]).expect("PDF"), 1.0).expect("import");
+    assert_eq!(sheets.len(), 3);
+    for sheet in &sheets {
+        assert!((sheet.width - PAGE_WIDTH).abs() < 2.0, "{}", sheet.width);
+        assert!((sheet.height - PAGE_HEIGHT).abs() < 2.0, "{}", sheet.height);
+        // Le trait vertical se poursuit d'une feuille à l'autre, à la même abscisse.
+        let img = decode(&sheet.png);
+        let [r, g, b] = px(&img, 100.0, 500.0);
+        assert!(r < 60 && g < 60 && b < 60, "trait attendu : {r} {g} {b}");
+        assert_eq!(px(&img, 400.0, 500.0), [255, 255, 255]);
+    }
+    // Il s'arrête à 3000 unités, soit à 755 unités du haut de la troisième feuille.
+    assert_eq!(px(&decode(&sheets[2].png), 100.0, 900.0), [255, 255, 255]);
+}
+
+#[test]
+fn pdf_keeps_pages_that_fit_and_cuts_the_others() {
     let small = Page::default();
     let tall = Page {
         items: vec![thick_black(&[(0.0, 0.0), (100.0, 3000.0)])],
@@ -205,7 +307,7 @@ fn pdf_has_one_page_per_svg_with_their_own_size() {
     let pdf = svgs_to_pdf(&svgs).expect("PDF");
     assert!(pdf.starts_with(b"%PDF-"));
     let text = String::from_utf8_lossy(&pdf);
-    assert!(text.contains("/Count 2"));
+    assert!(text.contains("/Count 4"), "1 feuille, puis 3");
     assert!(svgs_to_pdf(&[]).is_err());
 }
 
@@ -266,6 +368,21 @@ fn imported_images_keep_their_format_and_fit_the_page_width() {
     let imported = import_image(jpeg).expect("JPEG");
     assert_eq!(imported.mime, "image/jpeg");
     assert!((imported.height - 2.0 * PAGE_WIDTH).abs() < 1e-2);
+}
+
+#[test]
+fn pasted_images_become_png_and_shrink_when_huge() {
+    let small = pasted_image(2, 1, vec![255; 8]).expect("image");
+    assert_eq!(small.mime, "image/png");
+    assert_eq!((small.width, small.height), (2.0, 1.0));
+    assert_eq!(decode(&small.data).width(), 2);
+
+    let huge = pasted_image(5000, 1, vec![255; 20_000]).expect("image");
+    assert_eq!(decode(&huge.data).width(), 4096);
+    assert_eq!(huge.width, 5000.0);
+
+    assert!(pasted_image(0, 0, Vec::new()).is_err());
+    assert!(pasted_image(2, 2, vec![0; 3]).is_err());
 }
 
 /// Mesure d'export : `cargo test --release -p calame-export -- --ignored --nocapture`.

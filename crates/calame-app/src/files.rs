@@ -2,12 +2,14 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
 
 use calame_core::{NodeId, Page};
 use calame_export::{
-    page_svg, render_pdf_pages, svg_to_png, svgs_to_pdf, PageBackground, RenderedPage, PNG_SCALE,
+    page_svg_with_images, render_pdf_pages, svg_to_png, svgs_to_pdf, PageBackground, PageImages,
+    RenderedPage, PNG_SCALE,
 };
 
 /// Pixels par unité de page pour les pages d'un PDF importé (1,5 : environ 144 points par pouce).
@@ -35,6 +37,8 @@ pub struct ExportPage {
     pub name: String,
     pub page: Page,
     pub background: PageBackground,
+    /// Contenu des images posées sur la page.
+    pub images: PageImages,
 }
 
 /// Où écrire : un fichier (PDF, ou page unique) ou un dossier (une image par page).
@@ -99,7 +103,7 @@ pub fn export_pages(
     }
     let svgs: Vec<String> = pages
         .iter()
-        .map(|p| page_svg(&p.page, &p.background))
+        .map(|p| page_svg_with_images(&p.page, &p.background, &p.images))
         .collect();
     let count = pages.len();
     let plural = if count > 1 { "s" } else { "" };
@@ -151,6 +155,28 @@ fn encode_page(svg: &str, format: ExportFormat) -> Result<Vec<u8>, String> {
 
 fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::write(path, bytes).map_err(|e| format!("Écriture de {} impossible : {e}", path.display()))
+}
+
+/// Écrit les pages en PDF (découpées en feuilles A4) et ouvre le fichier avec le lecteur de PDF du
+/// système : l'impression se lance depuis sa boîte de dialogue, qui connaît les imprimantes.
+pub fn print_pages(pages: &[ExportPage], path: &Path) -> Result<(), String> {
+    export_pages(
+        pages,
+        ExportFormat::Pdf,
+        &Destination::File(path.to_path_buf()),
+    )?;
+    let program = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    Command::new(program)
+        .arg(path)
+        .spawn()
+        .map(drop)
+        .map_err(|e| format!("Ouverture de {} impossible : {e}", path.display()))
 }
 
 /// Lit un PDF et rend toutes ses pages en images ; renvoie le nom du document (nom du fichier).
@@ -229,6 +255,7 @@ mod tests {
                 items: vec![Item::Stroke(stroke)],
             },
             background: PageBackground::Pattern(Background::GridSmall),
+            images: PageImages::new(),
         }
     }
 

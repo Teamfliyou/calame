@@ -22,6 +22,10 @@ pub enum Command {
     ZoomIn,
     ZoomOut,
     SetDark(bool),
+    /// Place la barre d'outils (crayons, gomme…) en haut ou en bas de la page : à enregistrer.
+    SetDockPosition(DockPosition),
+    /// Ouvre la fenêtre des raccourcis des outils.
+    OpenShortcuts,
     Copy,
     Cut,
     Paste,
@@ -48,6 +52,8 @@ pub enum Command {
     OpenPalette,
     ExportPage(ExportFormat),
     ExportNotebook(ExportFormat),
+    PrintPage,
+    PrintNotebook,
     ImportPdf,
     Backup,
     RestoreBackup,
@@ -84,11 +90,126 @@ pub struct EditorState {
     pub save: SaveState,
     pub zoom: f32,
     pub background: Background,
+    pub dock_position: DockPosition,
+}
+
+/// Où flotte la barre d'outils au-dessus de la page.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DockPosition {
+    #[default]
+    Bottom,
+    BottomLeft,
+    BottomRight,
+    Top,
+    TopLeft,
+    TopRight,
+}
+
+impl DockPosition {
+    pub const ALL: [DockPosition; 6] = [
+        DockPosition::TopLeft,
+        DockPosition::Top,
+        DockPosition::TopRight,
+        DockPosition::BottomLeft,
+        DockPosition::Bottom,
+        DockPosition::BottomRight,
+    ];
+
+    pub fn as_setting(self) -> &'static str {
+        match self {
+            DockPosition::Bottom => "bottom",
+            DockPosition::BottomLeft => "bottom-left",
+            DockPosition::BottomRight => "bottom-right",
+            DockPosition::Top => "top",
+            DockPosition::TopLeft => "top-left",
+            DockPosition::TopRight => "top-right",
+        }
+    }
+
+    pub fn from_setting(text: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|p| p.as_setting() == text)
+            .unwrap_or_default()
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            DockPosition::Bottom => "dock-bottom",
+            DockPosition::BottomLeft => "dock-bottom-left",
+            DockPosition::BottomRight => "dock-bottom-right",
+            DockPosition::Top => "dock-top",
+            DockPosition::TopLeft => "dock-top-left",
+            DockPosition::TopRight => "dock-top-right",
+        }
+    }
+
+    pub fn is_top(self) -> bool {
+        matches!(
+            self,
+            DockPosition::Top | DockPosition::TopLeft | DockPosition::TopRight
+        )
+    }
+
+    /// -1 à gauche, 0 au centre, 1 à droite.
+    fn side(self) -> i8 {
+        match self {
+            DockPosition::TopLeft | DockPosition::BottomLeft => -1,
+            DockPosition::TopRight | DockPosition::BottomRight => 1,
+            _ => 0,
+        }
+    }
+}
+
+/// Menu de choix de la position de la barre d'outils (réglages et menu « … » de l'éditeur).
+pub fn dock_position_menu(ui: &mut Ui, current: DockPosition, commands: &mut Vec<Command>) {
+    ui.menu_button(t("dock-position"), |ui| {
+        for position in DockPosition::ALL {
+            if ui
+                .selectable_label(current == position, t(position.label_key()))
+                .clicked()
+            {
+                commands.push(Command::SetDockPosition(position));
+                ui.close();
+            }
+        }
+    });
+}
+
+/// Ancrage d'une fenêtre flottante de l'éditeur : `gap` est la distance au bord (haut ou bas) de
+/// la page ; en haut, on descend sous la barre du haut, et sous le repère du mode concentration.
+/// À gauche ou à droite, on reste à l'intérieur de la page (hors sommaire).
+fn dock_anchor(editor: &EditorUi, gap: f32) -> (Align2, [f32; 2]) {
+    let position = editor.dock_position;
+    let focus = if editor.focus_mode { 44.0 } else { 0.0 };
+    let y = if position.is_top() {
+        editor.canvas_top + gap + focus
+    } else {
+        -gap
+    };
+    let margin = 16.0;
+    match (position.is_top(), position.side()) {
+        (true, -1) => (Align2::LEFT_TOP, [editor.canvas_left + margin, y]),
+        (true, 1) => (Align2::RIGHT_TOP, [-(editor.canvas_right_inset + margin), y]),
+        (true, _) => (Align2::CENTER_TOP, [0.0, y]),
+        (false, -1) => (Align2::LEFT_BOTTOM, [editor.canvas_left + margin, y]),
+        (false, 1) => (Align2::RIGHT_BOTTOM, [-(editor.canvas_right_inset + margin), y]),
+        (false, _) => (Align2::CENTER_BOTTOM, [0.0, y]),
+    }
 }
 
 /// Ce que l'éditeur garde d'une image à l'autre.
 #[derive(Default)]
 pub struct EditorUi {
+    /// Position de la barre d'outils (réglage enregistré).
+    pub dock_position: DockPosition,
+    /// Haut de la zone de page à l'écran, mis à jour à chaque image.
+    pub canvas_top: f32,
+    /// Bord gauche de la zone de page, et distance de son bord droit au bord de la fenêtre.
+    pub canvas_left: f32,
+    pub canvas_right_inset: f32,
+    /// Mode concentration actif (mis à jour à chaque image).
+    pub focus_mode: bool,
     /// Bulle des réglages fins ouverte au-dessus du dock.
     pub bubble: bool,
 }
@@ -203,6 +324,9 @@ pub fn top_bar(ui: &mut Ui, state: &EditorState) -> Vec<Command> {
                         commands.push(Command::ExportPage(format));
                     }
                 }
+                if ui.button(t("print")).clicked() {
+                    commands.push(Command::PrintPage);
+                }
             });
             ui.separator();
             ui.label(
@@ -214,6 +338,9 @@ pub fn top_bar(ui: &mut Ui, state: &EditorState) -> Vec<Command> {
                 if ui.button(t(key)).clicked() {
                     commands.push(Command::ExportNotebook(format));
                 }
+            }
+            if ui.button(t("print")).clicked() {
+                commands.push(Command::PrintNotebook);
             }
         });
     });
@@ -361,26 +488,28 @@ fn more_menu(ui: &mut Ui, state: &EditorState, commands: &mut Vec<Command>) {
         "dark-theme"
     };
     item(ui, true, theme_key, Command::SetDark(!state.dark));
+    item(ui, true, "shortcuts", Command::OpenShortcuts);
     ui.separator();
     item(ui, true, "backup", Command::Backup);
     item(ui, true, "restore-backup", Command::RestoreBackup);
+    ui.separator();
+    dock_position_menu(ui, state.dock_position, commands);
 }
 
 // ---- Dock d'outils ----------------------------------------------------------------------
 
-const TOOLS: [(Tool, Icon, &str, &str); 7] = [
-    (Tool::Pen, Icon::Pen, "tool-pen", "P"),
+const TOOLS: [(Tool, Icon, &str); 7] = [
+    (Tool::Pen, Icon::Pen, "tool-pen"),
     (
         Tool::Highlighter,
         Icon::Highlighter,
         "tool-highlighter",
-        "H",
     ),
-    (Tool::EraserStroke, Icon::EraserStroke, "tool-eraser", "E"),
-    (Tool::Lasso, Icon::Lasso, "tool-lasso", "L"),
-    (Tool::Text, Icon::Text, "tool-text", "T"),
-    (Tool::Pipette, Icon::Pipette, "tool-pipette", "I"),
-    (Tool::Instruments, Icon::Ruler, "tool-instruments", "R"),
+    (Tool::EraserStroke, Icon::EraserStroke, "tool-eraser"),
+    (Tool::Lasso, Icon::Lasso, "tool-lasso"),
+    (Tool::Text, Icon::Text, "tool-text"),
+    (Tool::Pipette, Icon::Pipette, "tool-pipette"),
+    (Tool::Instruments, Icon::Ruler, "tool-instruments"),
 ];
 
 fn is_eraser(tool: Tool) -> bool {
@@ -428,7 +557,7 @@ fn pen_dot(width: f32) -> f32 {
     (width.sqrt() * 4.2).clamp(6.0, 15.0)
 }
 
-fn pen_label(pen: &PenPreset) -> String {
+pub fn pen_label(pen: &PenPreset) -> String {
     let kind = match pen.kind {
         BrushKind::Pen => t("tool-pen"),
         BrushKind::Highlighter => t("tool-highlighter"),
@@ -471,14 +600,15 @@ pub fn dock(
     dark: bool,
 ) -> Vec<Command> {
     let mut commands = Vec::new();
+    let (align, offset) = dock_anchor(editor, if editor.dock_position.is_top() { 16.0 } else { 20.0 });
     egui::Area::new(egui::Id::unique("calame-dock"))
-        .anchor(Align2::CENTER_BOTTOM, [0.0, -20.0])
+        .anchor(align, offset)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
             dock_frame(dark).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    for (tool, icon, key, shortcut) in TOOLS {
+                    for (tool, icon, key) in TOOLS {
                         let active =
                             tools.tool == tool || (is_eraser(tool) && is_eraser(tools.tool));
                         // La gomme montre le mode qu'elle reprendra : trait entier ou zone.
@@ -487,7 +617,10 @@ pub fn dock(
                         } else {
                             icon
                         };
-                        let label = format!("{} ({shortcut})", t(key));
+                        let label = match tools.shortcuts.tool_label(tool) {
+                            Some(keys) => format!("{} ({keys})", t(key)),
+                            None => t(key).to_string(),
+                        };
                         if widgets::tool_button(ui, icon, &label, active).clicked() {
                             pick_tool(tools, editor, tool);
                         }
@@ -534,8 +667,9 @@ pub fn mini_dock(
     can_undo: bool,
 ) -> Vec<Command> {
     let mut commands = Vec::new();
+    let (align, offset) = dock_anchor(editor, if editor.dock_position.is_top() { 16.0 } else { 22.0 });
     egui::Area::new(egui::Id::unique("calame-mini-dock"))
-        .anchor(Align2::CENTER_BOTTOM, [0.0, -22.0])
+        .anchor(align, offset)
         .show(ctx, |ui| {
             dock_frame(true).corner_radius(18).show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -648,8 +782,9 @@ pub fn bubble(
         return commands;
     }
     let dark = state.dark;
+    let (align, offset) = dock_anchor(editor, bottom);
     let response = egui::Area::new(egui::Id::unique("calame-bulle"))
-        .anchor(Align2::CENTER_BOTTOM, [0.0, -bottom])
+        .anchor(align, offset)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::new()
@@ -688,7 +823,7 @@ pub fn bubble(
     commands
 }
 
-fn tool_title(tool: Tool) -> &'static str {
+pub fn tool_title(tool: Tool) -> &'static str {
     match tool {
         Tool::Pen => t("tool-pen"),
         Tool::Highlighter => t("tool-highlighter"),

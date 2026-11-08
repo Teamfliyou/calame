@@ -16,10 +16,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 /// Version du codec des pages (`page_data.format`).
 ///
-/// 1 : traits seuls ; 2 : éléments (traits et textes).
+/// 1 : traits seuls ; 2 : éléments (traits, textes et, depuis le schéma 4, images).
 const PAGE_FORMAT: i64 = 2;
 
 /// Page telle qu'enregistrée en format 1, lue puis convertie.
@@ -58,7 +58,7 @@ pub enum StoreError {
     NotTrashed,
     #[error("format de page inconnu : {0}")]
     UnsupportedPageFormat(i64),
-    #[error("image de fond introuvable : {0}")]
+    #[error("image introuvable : {0}")]
     AssetNotFound(AssetId),
     #[error("archive zip : {0}")]
     Zip(#[from] zip::result::ZipError),
@@ -70,7 +70,8 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-/// Image enregistrée (fond de page) ; `width` et `height` sont en unités de page.
+/// Image enregistrée (fond de page ou image posée sur une page) ; `width` et `height` sont en
+/// unités de page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Asset {
     pub id: AssetId,
@@ -159,6 +160,18 @@ impl Store {
                     created_at INTEGER NOT NULL
                 );
                 PRAGMA user_version = 3;",
+            )?;
+        }
+        if version < 4 {
+            // Images posées sur les pages : leurs références sont dans le contenu sérialisé, que
+            // SQLite ne sait pas lire. Cette table les recopie, pour ne pas les purger.
+            conn.execute_batch(
+                "CREATE TABLE page_assets (
+                    page_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+                    asset_id TEXT NOT NULL,
+                    PRIMARY KEY (page_id, asset_id)
+                );
+                PRAGMA user_version = 4;",
             )?;
         }
         Ok(Self { conn })
@@ -444,6 +457,15 @@ impl Store {
                 format = excluded.format, data = excluded.data, updated_at = excluded.updated_at",
             params![id.to_string(), PAGE_FORMAT, bytes, now()],
         )?;
+        // Une image retirée de la page y reste liée : « Annuler » doit pouvoir la ramener.
+        for item in &page.items {
+            if let Item::Image(image) = item {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO page_assets (page_id, asset_id) VALUES (?1, ?2)",
+                    params![id.to_string(), image.asset.to_string()],
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -511,7 +533,8 @@ impl Store {
     /// Supprime les images qu'aucune page n'utilise plus (y compris dans la corbeille).
     fn purge_unused_assets(&self) -> Result<()> {
         self.conn.execute(
-            "DELETE FROM assets WHERE 'asset:' || id NOT IN (SELECT background FROM nodes)",
+            "DELETE FROM assets WHERE 'asset:' || id NOT IN (SELECT background FROM nodes)
+                AND id NOT IN (SELECT asset_id FROM page_assets)",
             [],
         )?;
         Ok(())
@@ -656,6 +679,11 @@ fn copy_subtree(
     conn.execute(
         "INSERT INTO page_data (page_id, format, data, updated_at)
          SELECT ?2, format, data, updated_at FROM page_data WHERE page_id = ?1",
+        params![src.to_string(), new_id.to_string()],
+    )?;
+    conn.execute(
+        "INSERT INTO page_assets (page_id, asset_id)
+         SELECT ?2, asset_id FROM page_assets WHERE page_id = ?1",
         params![src.to_string(), new_id.to_string()],
     )?;
     let children: Vec<NodeId> = {

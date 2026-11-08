@@ -205,6 +205,20 @@ fn commands(data: &PaletteData<'_>) -> Vec<(Command, String, Icon, Option<&'stat
     }
     list.push((
         data.has_page,
+        Command::PrintPage,
+        t("print-page").into(),
+        Icon::Export,
+        Some("Ctrl P"),
+    ));
+    list.push((
+        in_notebook,
+        Command::PrintNotebook,
+        t("print-notebook").into(),
+        Icon::Export,
+        None,
+    ));
+    list.push((
+        data.has_page,
         Command::ToggleFocus,
         t("focus-mode").into(),
         Icon::Focus,

@@ -32,9 +32,15 @@ struct ThumbText {
     color: Color32,
 }
 
+struct ThumbImage {
+    asset: AssetId,
+    corners: [Point2; 4],
+}
+
 pub struct Thumb {
     strokes: Vec<ThumbStroke>,
     texts: Vec<ThumbText>,
+    images: Vec<ThumbImage>,
     background: Background,
     /// Taille de l'image de fond, en unités de page.
     image_size: Option<(f32, f32)>,
@@ -44,6 +50,7 @@ impl Thumb {
     fn new(page: &Page, background: Background, image_size: Option<(f32, f32)>) -> Self {
         let mut strokes = Vec::new();
         let mut texts = Vec::new();
+        let mut images = Vec::new();
         for item in &page.items {
             match item {
                 Item::Stroke(s) => {
@@ -81,11 +88,16 @@ impl Thumb {
                         t.color.r, t.color.g, t.color.b, t.color.a,
                     ),
                 }),
+                Item::Image(image) => images.push(ThumbImage {
+                    asset: image.asset,
+                    corners: image.corners(),
+                }),
             }
         }
         Self {
             strokes,
             texts,
+            images,
             background,
             image_size,
         }
@@ -193,7 +205,15 @@ impl ThumbSource<'_> {
             .background
             .image()
             .and_then(|asset| self.cache.texture(ctx, self.store, asset));
-        paint(painter, rect, &thumb, texture, radius, dark);
+        let images: Vec<(egui::TextureId, [Point2; 4])> = thumb
+            .images
+            .iter()
+            .filter_map(|image| {
+                let texture = self.cache.texture(ctx, self.store, image.asset)?;
+                Some((texture, image.corners))
+            })
+            .collect();
+        paint(painter, rect, &thumb, texture, &images, radius, dark);
     }
 }
 
@@ -202,6 +222,7 @@ fn paint(
     rect: Rect,
     thumb: &Thumb,
     texture: Option<egui::TextureId>,
+    images: &[(egui::TextureId, [Point2; 4])],
     radius: f32,
     dark: bool,
 ) {
@@ -209,13 +230,13 @@ fn paint(
     let painter = painter.with_clip_rect(rect.shrink(0.5).intersect(painter.clip_rect()));
     let k = rect.width() / thumb.width();
     let to_screen = |p: Point2| rect.min + vec2(p.x, p.y) * k;
+    let tint = if dark {
+        Color32::from_gray(200)
+    } else {
+        Color32::WHITE
+    };
     if let (Some(texture), Some((w, h))) = (texture, thumb.image_size) {
         let image = Rect::from_min_size(rect.min, vec2(w, h) * k);
-        let tint = if dark {
-            Color32::from_gray(200)
-        } else {
-            Color32::WHITE
-        };
         painter.image(
             texture,
             image,
@@ -224,6 +245,9 @@ fn paint(
         );
     } else {
         paint_pattern(&painter, rect, thumb.background, k, dark);
+    }
+    for &(texture, corners) in images {
+        crate::canvas::paint_image(&painter, texture, corners.map(to_screen), tint);
     }
     for stroke in &thumb.strokes {
         let color = theme::display_ink(stroke.color, dark);

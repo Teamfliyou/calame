@@ -1,5 +1,8 @@
 //! Calame : prise de notes manuscrites.
 
+// Pas de fenêtre de console à côté de l'application, sauf en compilation de développement.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod canvas;
 mod dates;
 mod file_ops;
@@ -11,6 +14,7 @@ mod instruments_ui;
 mod library_ui;
 mod palette_ui;
 mod render_cache;
+mod shortcuts;
 mod svg_path;
 mod theme;
 mod thumbs;
@@ -18,12 +22,14 @@ mod toolbar;
 mod tools;
 mod widgets;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context as _};
 use calame_core::{AssetId, Background, History, Item, LibraryTree, Node, NodeId, NodeKind, Page};
+use calame_export::{items_to_bitmap, pasted_image};
 use calame_storage::Store;
 use canvas::Canvas;
 use files::{ExportFormat, Task};
@@ -31,7 +37,7 @@ use home_ui::{HomeData, HomeState};
 use library_ui::{Action, SidebarState};
 use palette_ui::{PaletteData, PaletteState};
 use thumbs::{ThumbSource, Thumbs};
-use toolbar::{Command, EditorState, EditorUi, SaveState};
+use toolbar::{Command, DockPosition, EditorState, EditorUi, SaveState};
 use tools::{Tool, ToolSettings};
 
 /// Délai sans modification avant l'enregistrement automatique de la page ouverte.
@@ -85,6 +91,9 @@ struct CalameApp {
     tools: ToolSettings,
     /// Éléments copiés ou coupés, collables dans n'importe quelle page.
     clipboard: Vec<Item>,
+    /// Empreinte de leur image, mise dans le presse-papiers du système : tant qu'elle y est, coller
+    /// redonne ces éléments ; si une autre application l'a remplacée, on colle son contenu.
+    copied_image: Option<u64>,
     /// Thème sombre choisi (le mode concentration est toujours sombre).
     dark: bool,
     /// Mode concentration : ni barre du haut ni sommaire, mini-dock, thème sombre.
@@ -93,6 +102,10 @@ struct CalameApp {
     home: HomeState,
     editor: EditorUi,
     palette: Option<PaletteState>,
+    /// Fenêtre des raccourcis des outils : ouverte ?, ligne en attente d'une touche, message.
+    shortcuts_open: bool,
+    shortcut_recording: Option<shortcuts::Target>,
+    shortcut_message: Option<&'static str>,
     screen: Screen,
     sidebar_visible: bool,
     /// Dernière page ouverte dans chaque cahier, pour la retrouver en y revenant.
@@ -102,8 +115,11 @@ struct CalameApp {
     status: Option<String>,
     /// Fond de la page ouverte.
     background: Background,
-    /// Textures des images de fond déjà chargées, avec leur taille en unités de page.
-    textures: HashMap<AssetId, (egui::TextureHandle, egui::Vec2)>,
+    /// Textures des images (de fond ou posées sur la page) déjà chargées, avec leur taille en
+    /// unités de page.
+    textures: canvas::ImageTextures,
+    /// Images de la page dont la lecture a échoué : à ne pas retenter à chaque image affichée.
+    unreadable_images: HashSet<AssetId>,
     /// Import ou export en cours dans un fil séparé.
     task: Option<Task>,
     /// Date de dernière modification de chaque page (secondes Unix).
@@ -136,6 +152,24 @@ fn paper_key(notebook: NodeId) -> String {
     format!("paper:{notebook}")
 }
 
+/// Empreinte d'une image, pour reconnaître celle que l'application a mise dans le presse-papiers.
+/// Un échantillon de pixels suffit, et reste rapide sur une grande image.
+fn image_print(image: &egui::ColorImage) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    image.size.hash(&mut hasher);
+    let step = (image.pixels.len() / 65_536).max(1);
+    for pixel in image.pixels.iter().step_by(step) {
+        pixel.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn has_extension(path: &Path, extensions: &[&str]) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)))
+}
+
 impl CalameApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
         let path = database_path();
@@ -151,12 +185,16 @@ impl CalameApp {
             canvas: Canvas::default(),
             tools: ToolSettings::default(),
             clipboard: Vec::new(),
+            copied_image: None,
             dark: false,
             focus: false,
             sidebar: SidebarState::default(),
             home: HomeState::default(),
             editor: EditorUi::default(),
             palette: None,
+            shortcuts_open: false,
+            shortcut_recording: None,
+            shortcut_message: None,
             screen: Screen::Library,
             sidebar_visible: true,
             last_pages: HashMap::new(),
@@ -164,6 +202,7 @@ impl CalameApp {
             status: None,
             background: Background::Blank,
             textures: HashMap::new(),
+            unreadable_images: HashSet::new(),
             task: None,
             stamps: HashMap::new(),
             thumbs: Thumbs::default(),
@@ -245,6 +284,12 @@ impl CalameApp {
         }
         if let Some(text) = read(self, "shapes") {
             self.tools.shape_recognition = text == "1";
+        }
+        if let Some(text) = read(self, "dock-position") {
+            self.editor.dock_position = DockPosition::from_setting(&text);
+        }
+        if let Some(text) = read(self, "tool-shortcuts") {
+            self.tools.shortcuts = shortcuts::ToolShortcuts::from_setting(&text);
         }
         if let Some(text) = read(self, "dark") {
             self.dark = text == "1";
@@ -718,12 +763,26 @@ impl CalameApp {
                 self.apply_theme(ctx);
                 self.save_setting("dark", if dark { "1" } else { "0" });
             }
-            Command::Copy => self.copy_selection(),
+            Command::SetDockPosition(position) => {
+                self.editor.dock_position = position;
+                self.editor.bubble = false;
+                self.save_setting("dock-position", position.as_setting());
+            }
+            Command::OpenShortcuts => {
+                self.shortcuts_open = true;
+                self.shortcut_recording = None;
+                self.shortcut_message = None;
+            }
+            Command::Copy => self.copy_selection(ctx),
             Command::Cut => {
-                self.copy_selection();
+                self.copy_selection(ctx);
                 self.delete_selection();
             }
-            Command::Paste => self.paste(),
+            // Comme Ctrl+V : le contenu du presse-papiers arrive en événement, voir `shortcuts`.
+            Command::Paste => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                ctx.request_repaint();
+            }
             Command::Delete => self.delete_selection(),
             Command::SelectAll => {
                 if let Some(o) = &self.current {
@@ -787,6 +846,16 @@ impl CalameApp {
                     self.export_node(id, format);
                 }
             }
+            Command::PrintPage => {
+                if let Some(id) = self.current.as_ref().map(|o| o.id) {
+                    self.print_node(id);
+                }
+            }
+            Command::PrintNotebook => {
+                if let Screen::Notebook(id) = self.screen {
+                    self.print_node(id);
+                }
+            }
             Command::ImportPdf => {
                 if let Some(target) = self.import_target() {
                     self.import_pdf(target);
@@ -817,13 +886,30 @@ impl CalameApp {
         }
     }
 
-    fn copy_selection(&mut self) {
-        if let Some(o) = &self.current {
-            let items = self.canvas.selected_items(&o.page);
-            if !items.is_empty() {
-                self.clipboard = items;
-            }
+    /// Copie la sélection, et son image dans le presse-papiers du système : on peut la coller dans
+    /// une autre application. Elle y sert aussi ici, car sans contenu dans le presse-papiers du
+    /// système, Ctrl+V n'envoie aucun événement.
+    fn copy_selection(&mut self, ctx: &egui::Context) {
+        let Some(o) = &self.current else {
+            return;
+        };
+        let items = self.canvas.selected_items(&o.page);
+        if items.is_empty() {
+            return;
         }
+        match items_to_bitmap(&items, &self.page_images(&items)) {
+            Ok(Some(bitmap)) => {
+                let image = egui::ColorImage::from_rgba_premultiplied(
+                    [bitmap.width as usize, bitmap.height as usize],
+                    &bitmap.rgba,
+                );
+                self.copied_image = Some(image_print(&image));
+                ctx.copy_image(image);
+            }
+            Ok(None) => {}
+            Err(e) => self.error = Some(e.to_string()),
+        }
+        self.clipboard = items;
     }
 
     fn delete_selection(&mut self) {
@@ -832,7 +918,8 @@ impl CalameApp {
         }
     }
 
-    fn paste(&mut self) {
+    /// Colle les éléments copiés dans l'application.
+    fn paste_items(&mut self) {
         if self.clipboard.is_empty() {
             return;
         }
@@ -842,6 +929,38 @@ impl CalameApp {
             self.canvas.sync_tool(Tool::Lasso);
             self.canvas
                 .paste(&mut o.page, &mut o.history, &self.clipboard);
+        }
+    }
+
+    /// Colle l'image du presse-papiers du système.
+    fn paste_image(&mut self, image: &egui::ColorImage) {
+        if self.current.is_none() {
+            return;
+        }
+        // Notre propre copie revient : on colle les éléments d'origine, qui restent modifiables.
+        if self.copied_image == Some(image_print(image)) && !self.clipboard.is_empty() {
+            self.paste_items();
+            return;
+        }
+        let rgba: Vec<u8> = image
+            .pixels
+            .iter()
+            .flat_map(|pixel| pixel.to_srgba_unmultiplied())
+            .collect();
+        match pasted_image(image.width() as u32, image.height() as u32, rgba) {
+            Ok(image) => self.place_image(&image),
+            Err(e) => self.error = Some(e.to_string()),
+        }
+    }
+
+    /// Colle le texte du presse-papiers du système.
+    fn paste_text(&mut self, ctx: &egui::Context, text: &str) {
+        let (size, color) = (self.tools.text_size, self.tools.color);
+        if let Some(o) = &mut self.current {
+            self.tools.tool = Tool::Lasso;
+            self.canvas.sync_tool(Tool::Lasso);
+            self.canvas
+                .paste_text(ctx, &mut o.page, &mut o.history, text, size, color);
         }
     }
 
@@ -862,6 +981,10 @@ impl CalameApp {
         if self.palette.is_some() || self.home.sheet.is_some() {
             return;
         }
+        // Pendant le réglage d'un raccourci, la fenêtre reçoit les touches : rien d'autre ne bouge.
+        if self.shortcut_recording.is_some() {
+            return;
+        }
         let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::K))) {
             self.palette = Some(PaletteState::new());
@@ -875,6 +998,19 @@ impl CalameApp {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::E))) {
             self.run(ctx, Command::ExportPage(ExportFormat::Pdf));
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::P))) {
+            self.run(ctx, Command::PrintPage);
+        }
+        // Une image collée va sur la page, même pendant une saisie : un champ n'en ferait rien.
+        let pasted = ctx.input(|i| {
+            i.events.iter().find_map(|event| match event {
+                egui::Event::PasteImage(image) => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = pasted {
+            self.paste_image(&image);
         }
         // Pendant une saisie (texte, renommage), les autres raccourcis appartiennent au champ.
         if ctx.egui_wants_keyboard_input() {
@@ -893,13 +1029,14 @@ impl CalameApp {
         } else if ctx.input_mut(|i| i.consume_shortcut(&undo)) {
             self.undo();
         }
-        let (mut copy, mut cut, mut paste) = (false, false, false);
+        let (mut copy, mut cut, mut pasted_text) = (false, false, None);
         let (delete, all, escape) = ctx.input_mut(|i| {
             for event in &i.events {
                 match event {
                     egui::Event::Copy => copy = true,
                     egui::Event::Cut => cut = true,
-                    egui::Event::Paste(_) => paste = true,
+                    // Copier ici remplace le texte du presse-papiers : celui-ci vient d'ailleurs.
+                    egui::Event::Paste(text) => pasted_text = Some(text.clone()),
                     _ => {}
                 }
             }
@@ -910,13 +1047,13 @@ impl CalameApp {
             )
         });
         if copy || cut {
-            self.copy_selection();
+            self.copy_selection(ctx);
         }
         if cut || delete {
             self.delete_selection();
         }
-        if paste {
-            self.paste();
+        if let Some(text) = pasted_text {
+            self.paste_text(ctx, &text);
         }
         if all {
             self.run(ctx, Command::SelectAll);
@@ -930,20 +1067,12 @@ impl CalameApp {
                 self.set_focus(ctx, false);
             }
         }
-        // Outils : une lettre, sans modificateur.
+        // Outils et stylos de la trousse : raccourcis réglables (voir `shortcuts`).
         if self.current.is_some() {
-            for (key, tool) in [
-                (egui::Key::P, Tool::Pen),
-                (egui::Key::H, Tool::Highlighter),
-                (egui::Key::E, Tool::EraserStroke),
-                (egui::Key::L, Tool::Lasso),
-                (egui::Key::T, Tool::Text),
-                (egui::Key::I, Tool::Pipette),
-                (egui::Key::R, Tool::Instruments),
-            ] {
-                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
-                    self.select_tool(tool);
-                }
+            match self.tools.shortcuts.pressed(ctx) {
+                Some(shortcuts::Target::Tool(tool)) => self.select_tool(tool),
+                Some(shortcuts::Target::Pen(i)) => shortcuts::trigger_pen(&mut self.tools, i),
+                None => {}
             }
         }
     }
@@ -976,7 +1105,8 @@ impl CalameApp {
             can_undo,
             can_redo,
             has_selection: self.canvas.has_selection(),
-            can_paste: !self.clipboard.is_empty(),
+            // Le contenu du presse-papiers du système n'est connu qu'au moment de coller.
+            can_paste: self.current.is_some(),
             has_page: self.current.is_some(),
             has_active_instrument: self.canvas.has_active_instrument(),
             instrument_count: self.canvas.instrument_count(),
@@ -987,6 +1117,7 @@ impl CalameApp {
             save,
             zoom: self.canvas.view.zoom,
             background: self.background,
+            dock_position: self.editor.dock_position,
         }
     }
 
@@ -1034,6 +1165,7 @@ impl CalameApp {
                     });
             }
         }
+        self.load_page_images(&ctx);
         let backdrop = self.backdrop();
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::desk(dark)))
@@ -1045,6 +1177,7 @@ impl CalameApp {
                         &mut open.history,
                         &mut self.tools,
                         &backdrop,
+                        &self.textures,
                     );
                 }
                 None => {
@@ -1075,6 +1208,10 @@ impl CalameApp {
 
         if self.current.is_some() {
             let canvas = self.canvas_rect(&ctx);
+            self.editor.canvas_top = canvas.top();
+            self.editor.canvas_left = canvas.left();
+            self.editor.canvas_right_inset = (ctx.content_rect().right() - canvas.right()).max(0.0);
+            self.editor.focus_mode = self.focus;
             if self.focus {
                 let label = self.focus_label();
                 commands.extend(toolbar::focus_overlays(&ctx, canvas, &label));
@@ -1230,23 +1367,31 @@ impl CalameApp {
         }
     }
 
-    /// PDF déposés sur la fenêtre : importés dans la matière choisie ou le cahier ouvert.
+    /// Fichiers déposés sur la fenêtre : un PDF est importé dans la matière choisie ou le cahier
+    /// ouvert ; les images sont posées sur la page ouverte.
     fn dropped_files(&mut self, ctx: &egui::Context, actions: &mut Vec<Action>) {
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         if dropped.is_empty() {
             return;
         }
-        let pdf = dropped
+        let paths: Vec<PathBuf> = dropped
             .into_iter()
             .map(|f| f.path().to_path_buf())
-            .find(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
-            });
-        match pdf {
-            Some(path) => actions.push(Action::ImportPdfPath(None, path)),
-            None => self.error = Some(i18n::t("drop-only-pdf").into()),
+            .collect();
+        if let Some(pdf) = paths.iter().find(|p| has_extension(p, &["pdf"])) {
+            actions.push(Action::ImportPdfPath(None, pdf.clone()));
+            return;
+        }
+        let images: Vec<&PathBuf> = paths
+            .iter()
+            .filter(|p| has_extension(p, &["png", "jpg", "jpeg"]))
+            .collect();
+        if images.is_empty() || self.current.is_none() {
+            self.error = Some(i18n::t("drop-only-pdf").into());
+            return;
+        }
+        for path in images {
+            self.place_image_file(path);
         }
     }
 }
@@ -1281,6 +1426,7 @@ impl eframe::App for CalameApp {
                     favorites: &self.favorites,
                     papers: &self.papers,
                     dark,
+                    dock_position: self.editor.dock_position,
                     dragging_files,
                 };
                 actions = home_ui::show(ui, &mut self.home, &data, &mut thumbs);
@@ -1300,7 +1446,7 @@ impl eframe::App for CalameApp {
                 notebook,
                 target: self.add_target(),
                 has_page: self.current.is_some(),
-                can_paste: !self.clipboard.is_empty(),
+                can_paste: self.current.is_some(),
                 dark,
             };
             let open = self
@@ -1319,6 +1465,16 @@ impl eframe::App for CalameApp {
                 &data,
                 &mut thumbs,
             ));
+        }
+        if shortcuts::shortcuts_window(
+            &ctx,
+            &mut self.shortcuts_open,
+            &mut self.shortcut_recording,
+            &mut self.tools,
+            &mut self.shortcut_message,
+        ) {
+            let text = self.tools.shortcuts.to_setting();
+            self.save_setting("tool-shortcuts", &text);
         }
         self.toasts(&ctx);
         self.dropped_files(&ctx, &mut actions);
@@ -1373,12 +1529,21 @@ fn main() -> anyhow::Result<()> {
         wgpu_options,
         ..Default::default()
     };
-    eframe::run_native(
+    let result = eframe::run_native(
         "Calame",
         options,
         Box::new(|cc| Ok(Box::new(CalameApp::new(cc)?))),
     )
-    .map_err(|e| anyhow!("échec du lancement de la fenêtre : {e}"))
+    .map_err(|e| anyhow!("échec du lancement de la fenêtre : {e}"));
+    // Sans console, une erreur de démarrage passerait inaperçue.
+    if let Err(e) = &result {
+        let _ = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("Calame")
+            .set_description(format!("{e:#}"))
+            .show();
+    }
+    result
 }
 
 #[cfg(test)]

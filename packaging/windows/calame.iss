@@ -1,6 +1,6 @@
 ; Installeur Windows de Calame, pour Inno Setup 6 (https://jrsoftware.org/isinfo.php).
 ; Construit par scripts\package-windows.ps1 ou par le workflow de publication :
-;   iscc /DAppVersion=1.0.1 packaging\windows\calame.iss
+;   iscc /DAppVersion=1.1.0 packaging\windows\calame.iss
 ; Prérequis : target\dist\calame.exe compilé (cargo build --profile dist -p calame-app).
 
 #ifndef AppVersion
@@ -17,6 +17,9 @@ AppSupportURL=https://github.com/Teamfliyou/calame/issues
 DefaultDirName={autopf}\Calame
 DefaultGroupName=Calame
 UninstallDisplayIcon={app}\Calame.exe
+#if FileExists(SourcePath + "..\..\assets\icon.ico")
+SetupIconFile=..\..\assets\icon.ico
+#endif
 OutputDir=..\..\dist
 OutputBaseFilename=calame-{#AppVersion}-setup
 Compression=lzma2

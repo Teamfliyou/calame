@@ -19,7 +19,7 @@ use crate::icons::{self, Icon};
 use crate::library_ui::{node_color, page_order, Action};
 use crate::theme::{self, Weight};
 use crate::thumbs::{self, ThumbSource};
-use crate::toolbar::{background_key, Command};
+use crate::toolbar::{background_key, dock_position_menu, Command, DockPosition};
 use crate::widgets::{self, Button, ButtonStyle};
 
 /// Rubrique de la barre latérale.
@@ -130,6 +130,7 @@ pub struct HomeData<'a> {
     /// Papier des nouvelles pages de chaque cahier.
     pub papers: &'a HashMap<NodeId, Background>,
     pub dark: bool,
+    pub dock_position: DockPosition,
     /// Des fichiers sont tirés au-dessus de la fenêtre.
     pub dragging_files: bool,
 }
@@ -357,6 +358,14 @@ fn sidebar(ui: &mut Ui, state: &mut HomeState, data: &HomeData<'_>, actions: &mu
                         ui.close();
                     }
                 }
+                ui.separator();
+                let mut commands = Vec::new();
+                dock_position_menu(ui, data.dock_position, &mut commands);
+                if ui.button(t("shortcuts")).clicked() {
+                    commands.push(Command::OpenShortcuts);
+                    ui.close();
+                }
+                actions.extend(commands.into_iter().map(Action::Command));
             });
             let (icon, key) = if dark {
                 (Icon::Sun, "light-theme")
@@ -1093,12 +1102,17 @@ fn notebooks_section(
     actions: &mut Vec<Action>,
 ) {
     let subjects = data.tree.children(None);
-    ui.horizontal_wrapped(|ui| {
+    // Écran étroit (téléphone) : titre sur sa ligne, puces dessous (elles passent à la ligne),
+    // pour qu'elles ne recouvrent jamais le titre. Écran large : puces alignées à droite.
+    if ui.available_width() < 640.0 {
         section_title(ui, t("your-notebooks"));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            // De droite à gauche : les matières à l'envers, puis « Tous ».
-            for subject in subjects.iter().rev() {
+        ui.add_space(10.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
+            if widgets::chip(ui, t("all"), None, state.filter.is_none(), 34.0).clicked() {
+                state.filter = None;
+            }
+            for subject in subjects.iter() {
                 let selected = state.filter == Some(subject.id);
                 if widgets::chip(
                     ui,
@@ -1112,11 +1126,33 @@ fn notebooks_section(
                     state.filter = if selected { None } else { Some(subject.id) };
                 }
             }
-            if widgets::chip(ui, t("all"), None, state.filter.is_none(), 34.0).clicked() {
-                state.filter = None;
-            }
         });
-    });
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            section_title(ui, t("your-notebooks"));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                // De droite à gauche : les matières à l'envers, puis « Tous ».
+                for subject in subjects.iter().rev() {
+                    let selected = state.filter == Some(subject.id);
+                    if widgets::chip(
+                        ui,
+                        &subject.name,
+                        Some(theme::to_color32(subject.color)),
+                        selected,
+                        34.0,
+                    )
+                    .clicked()
+                    {
+                        state.filter = if selected { None } else { Some(subject.id) };
+                    }
+                }
+                if widgets::chip(ui, t("all"), None, state.filter.is_none(), 34.0).clicked() {
+                    state.filter = None;
+                }
+            });
+        });
+    }
     ui.add_space(18.0);
     let notebooks: Vec<&Node> = subjects
         .iter()

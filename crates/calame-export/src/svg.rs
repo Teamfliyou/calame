@@ -4,14 +4,16 @@ use std::fmt::Write as _;
 
 use base64::Engine as _;
 use calame_core::background::export_rect;
-use calame_core::{BrushKind, Color, Item, Page, Rect2, Stroke, StrokePoint, TextBox};
+use calame_core::{BrushKind, Color, ImageBox, Item, Page, Rect2, Stroke, StrokePoint, TextBox};
 
-use crate::{BackgroundImage, PageBackground};
+use crate::{BackgroundImage, PageBackground, PageImages};
 
 /// Nombre de points ajoutés par segment lors du lissage des traits exportés.
 const SMOOTHING: usize = 4;
 /// Écart minimal entre deux points exportés, en unités de page (environ 0,1 mm).
 const MIN_STEP: f32 = 0.4;
+/// Marge autour d'éléments rendus seuls, en unités de page.
+const ITEMS_MARGIN: f32 = 8.0;
 
 /// Retire les points à moins de `MIN_STEP` du précédent : invisibles à l'œil, mais ils multipliaient
 /// la taille du fichier par dix. Le dernier point est toujours conservé.
@@ -56,14 +58,8 @@ fn escape(text: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// SVG complet d'une page : fond blanc, fond de page, puis les éléments dans leur ordre.
-/// La zone est celle de la page A4 (ou de l'image de fond), élargie au contenu qui déborde.
-pub fn page_svg(page: &Page, background: &PageBackground) -> String {
-    let image_size = match background {
-        PageBackground::Image(img) => Some((img.width, img.height)),
-        PageBackground::Pattern(_) => None,
-    };
-    let area = export_rect(&page.items, image_size);
+/// Début d'un SVG cadré sur `area`.
+fn svg_start(area: Rect2) -> String {
     let mut out = String::new();
     let _ = write!(
         out,
@@ -74,6 +70,42 @@ pub fn page_svg(page: &Page, background: &PageBackground) -> String {
         x = n(area.min.x),
         y = n(area.min.y),
     );
+    out
+}
+
+/// Les éléments dans leur ordre. Une image dont le contenu manque dans `images` est omise.
+fn items_into(out: &mut String, items: &[Item], images: &PageImages) {
+    for item in items {
+        match item {
+            Item::Stroke(s) => stroke_svg(out, s),
+            Item::Text(t) => text_svg(out, t),
+            Item::Image(placed) => {
+                if let Some(img) = images.get(&placed.asset) {
+                    placed_image_svg(out, placed, img);
+                }
+            }
+        }
+    }
+}
+
+/// SVG d'une page sans image posée dessus (voir [`page_svg_with_images`]).
+pub fn page_svg(page: &Page, background: &PageBackground) -> String {
+    page_svg_with_images(page, background, &PageImages::new())
+}
+
+/// SVG complet d'une page : fond blanc, fond de page, puis les éléments dans leur ordre.
+/// La zone est celle de la page A4 (ou de l'image de fond), élargie au contenu qui déborde.
+pub fn page_svg_with_images(
+    page: &Page,
+    background: &PageBackground,
+    images: &PageImages,
+) -> String {
+    let image_size = match background {
+        PageBackground::Image(img) => Some((img.width, img.height)),
+        PageBackground::Pattern(_) => None,
+    };
+    let area = export_rect(&page.items, image_size);
+    let mut out = svg_start(area);
     let _ = write!(
         out,
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#ffffff\"/>",
@@ -86,14 +118,22 @@ pub fn page_svg(page: &Page, background: &PageBackground) -> String {
         PageBackground::Pattern(bg) => pattern_svg(&mut out, *bg, area),
         PageBackground::Image(img) => image_svg(&mut out, img),
     }
-    for item in &page.items {
-        match item {
-            Item::Stroke(s) => stroke_svg(&mut out, s),
-            Item::Text(t) => text_svg(&mut out, t),
-        }
-    }
+    items_into(&mut out, &page.items, images);
     out.push_str("</svg>");
     out
+}
+
+/// SVG d'éléments seuls, sans fond, cadré au plus près. `None` s'ils n'occupent aucune place.
+pub(crate) fn items_svg(items: &[Item], images: &PageImages) -> Option<String> {
+    let area = items
+        .iter()
+        .filter_map(Item::bounds)
+        .reduce(Rect2::union)?
+        .expand(ITEMS_MARGIN);
+    let mut out = svg_start(area);
+    items_into(&mut out, items, images);
+    out.push_str("</svg>");
+    Some(out)
 }
 
 fn pattern_svg(out: &mut String, background: calame_core::Background, area: Rect2) {
@@ -126,6 +166,21 @@ fn image_svg(out: &mut String, img: &BackgroundImage) {
          xlink:href=\"data:{};base64,{data}\"/>",
         n(img.width),
         n(img.height),
+        img.mime
+    );
+}
+
+fn placed_image_svg(out: &mut String, placed: &ImageBox, img: &BackgroundImage) {
+    let data = base64::engine::general_purpose::STANDARD.encode(&img.data);
+    let _ = write!(
+        out,
+        "<image transform=\"translate({} {}) rotate({})\" x=\"0\" y=\"0\" width=\"{}\" \
+         height=\"{}\" preserveAspectRatio=\"none\" xlink:href=\"data:{};base64,{data}\"/>",
+        n(placed.pos.x),
+        n(placed.pos.y),
+        n(placed.angle.to_degrees()),
+        n(placed.width),
+        n(placed.height),
         img.mime
     );
 }

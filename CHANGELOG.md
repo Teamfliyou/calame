@@ -3,6 +3,35 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le projet suit le
 [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [1.1.0]
+
+### Ajouté
+- **Images sur la page** : Ctrl+V colle une image du presse-papiers (capture d'écran, image copiée
+  depuis une autre application), et une image PNG ou JPEG peut être déposée sur la fenêtre. Elle se
+  déplace, se redimensionne et pivote au lasso (un clic suffit à la sélectionner), et suit la page à
+  l'export et dans les miniatures.
+- **Imprimer** (Ctrl+P, bouton Exporter, palette) : ouvre le PDF, découpé en feuilles A4, dans le
+  lecteur de PDF du système.
+- **Barre d'outils** : six positions au choix (haut ou bas, à gauche, au centre ou à droite), dans
+  les réglages et le menu « … » de l'éditeur.
+- **Raccourcis des outils personnalisables** (Réglages → « Raccourcis des outils… ») : on clique sur
+  un outil ou un stylo de la trousse, puis on tape la touche ou la combinaison voulue. Les
+  info-bulles du bandeau affichent le raccourci choisi.
+- Coller un texte copié ailleurs crée une zone de texte. Copier une sélection la met aussi en image
+  dans le presse-papiers du système, pour la coller dans une autre application.
+
+### Corrigé
+- Copier-coller : Ctrl+V ne faisait rien quand le presse-papiers de Windows ne contenait pas de texte.
+- PDF : une page qui dépasse le format A4 est découpée en feuilles A4, au lieu de donner une seule
+  feuille géante. Un peu trop large, elle est réduite à la largeur de la feuille ; plus large que
+  haute, elle passe en A4 paysage.
+- Un trait proche du bord de la feuille ne l'agrandit plus : la page reste au format A4.
+- Windows : plus de fenêtre de console à côté de l'application.
+
+### Format
+- Schéma 4 (table `page_assets`). La mise à jour est automatique, mais une bibliothèque ouverte par
+  cette version ne s'ouvre plus avec les versions précédentes.
+
 ## [1.0.1]
 
 ### Corrigé

@@ -1,7 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use calame_core::{
-    Background, Brush, Item, LibraryError, NodeKind, Page, Stroke, StrokePoint, TextBox,
+    Background, Brush, ImageBox, Item, LibraryError, NodeKind, Page, Point2, Stroke, StrokePoint,
+    TextBox,
 };
 
 use super::*;
@@ -365,6 +366,42 @@ fn image_backgrounds_are_stored_copied_and_purged() {
     );
 
     // L'image reste tant qu'une page l'utilise ; elle disparaît avec la dernière.
+    s.trash(notebook.id).expect("corbeille");
+    s.empty_trash().expect("vider");
+    assert!(s.asset(asset).is_ok(), "la copie utilise encore l'image");
+    s.trash(copy.id).expect("corbeille");
+    s.empty_trash().expect("vider");
+    assert!(matches!(s.asset(asset), Err(StoreError::AssetNotFound(_))));
+}
+
+#[test]
+fn images_placed_on_a_page_live_as_long_as_the_page() {
+    let mut s = store();
+    let (_, notebook, _, page) = sample(&s);
+    let asset = s
+        .add_asset("image/png", 40.0, 20.0, &[1, 2, 3])
+        .expect("image");
+    let mut content = Page::default();
+    content.items.push(Item::Image(ImageBox::new(
+        asset,
+        Point2::new(5.0, 6.0),
+        40.0,
+        20.0,
+    )));
+    s.save_page(page.id, &content).expect("sauvegarde");
+    assert_eq!(s.load_page(page.id).expect("lecture"), content);
+
+    // Un changement de fond purge les images inutilisées, pas celle-ci.
+    s.set_background(page.id, Background::Lines).expect("fond");
+    assert!(s.asset(asset).is_ok());
+
+    // Même retirée de la page, elle reste : « Annuler » peut la ramener.
+    s.save_page(page.id, &Page::default()).expect("sauvegarde");
+    s.set_background(page.id, Background::Dots).expect("fond");
+    assert!(s.asset(asset).is_ok());
+
+    // Dupliquer partage l'image, qui disparaît avec la dernière page qui l'a utilisée.
+    let copy = s.duplicate(notebook.id).expect("dupliquer");
     s.trash(notebook.id).expect("corbeille");
     s.empty_trash().expect("vider");
     assert!(s.asset(asset).is_ok(), "la copie utilise encore l'image");

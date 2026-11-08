@@ -3,10 +3,11 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-use calame_core::background::{EXPORT_MARGIN, PAGE_HEIGHT, PAGE_WIDTH};
+use calame_core::background::{paper_rect, PAGE_HEIGHT, PAGE_WIDTH};
 use calame_core::{
-    snap, Background, BrushKind, Color, Edge, Handle, History, Instrument, InstrumentKind, Item,
-    Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox, UNITS_PER_MM,
+    snap, AssetId, Background, BrushKind, Color, Edge, Handle, History, ImageBox, Instrument,
+    InstrumentKind, Item, Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox,
+    UNITS_PER_MM,
 };
 use calame_shapes::{recognize_stroke, Recognized, ShapeKind};
 use egui::epaint::{TextShape, Vertex};
@@ -135,12 +136,16 @@ enum Event {
     Up(Source, Pos2),
 }
 
+/// Textures des images déjà chargées, avec leur taille en unités de page.
+pub type ImageTextures = HashMap<AssetId, (egui::TextureHandle, Vec2)>;
+
 /// Ce dont les gestes ont besoin en dehors du canevas.
 struct Cx<'a> {
     page: &'a mut Page,
     history: &'a mut History,
     tools: &'a mut ToolSettings,
     painter: &'a Painter,
+    images: &'a ImageTextures,
 }
 
 pub struct Canvas {
@@ -196,6 +201,10 @@ const HANDLE_RADIUS: f32 = 12.0;
 const ROTATE_HANDLE_OFFSET: f32 = 28.0;
 /// Décalage d'un collage par rapport à l'original, en unités de page.
 const PASTE_OFFSET: f32 = 24.0;
+/// Largeur maximale d'une image à son arrivée sur la page, en unités de page.
+const PLACED_IMAGE_MAX_WIDTH: f32 = PAGE_WIDTH * 0.9;
+/// Largeur maximale d'un texte collé, en unités de page.
+const PASTED_TEXT_MAX_WIDTH: f32 = PAGE_WIDTH * 0.85;
 /// Distance à partir de laquelle un trait commençant près d'un bord s'y accroche, en pixels d'écran.
 const SNAP_PX: f32 = 16.0;
 /// Durée d'immobilité du stylet, trait posé, qui déclenche la reconnaissance de forme.
@@ -361,6 +370,52 @@ impl Canvas {
         history.add_items(page, pasted);
     }
 
+    /// Pose une image au centre de la zone visible, sans déborder en haut ni à gauche de la page
+    /// (ce qui l'agrandirait), et la sélectionne.
+    pub fn add_image(
+        &mut self,
+        page: &mut Page,
+        history: &mut History,
+        asset: AssetId,
+        width: f32,
+        height: f32,
+    ) {
+        let shrink = (PLACED_IMAGE_MAX_WIDTH / width.max(1.0)).min(1.0);
+        let (width, height) = (width * shrink, height * shrink);
+        let center = self.viewport_center;
+        let pos = Point2::new(
+            (center.x - width / 2.0).max(0.0),
+            (center.y - height / 2.0).max(0.0),
+        );
+        let image = ImageBox::new(asset, pos, width, height);
+        self.selection = HashSet::from([image.id]);
+        history.add_item(page, Item::Image(image));
+    }
+
+    /// Pose un texte collé depuis une autre application au centre de la zone visible, et le
+    /// sélectionne.
+    pub fn paste_text(
+        &mut self,
+        ctx: &egui::Context,
+        page: &mut Page,
+        history: &mut History,
+        text: &str,
+        font_size: f32,
+        color: Color,
+    ) {
+        let text = wrap_lines(text.trim(), font_size);
+        if text.is_empty() {
+            return;
+        }
+        let font = FontId::proportional(font_size.max(1.0));
+        let galley = ctx.fonts_mut(|f| f.layout(text.clone(), font, Color32::BLACK, f32::INFINITY));
+        let mut item = TextBox::new(self.viewport_center, text, font_size, color);
+        item.width = galley.size().x;
+        item.height = galley.size().y;
+        self.selection = HashSet::from([item.id]);
+        history.add_item(page, Item::Text(item));
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -368,6 +423,7 @@ impl Canvas {
         history: &mut History,
         tools: &mut ToolSettings,
         backdrop: &Backdrop,
+        images: &ImageTextures,
     ) {
         let rect = ui.available_rect_before_wrap();
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
@@ -386,6 +442,7 @@ impl Canvas {
             history,
             tools,
             painter: &painter,
+            images,
         };
         if cx.tools.tool != self.last_tool {
             self.last_tool = cx.tools.tool;
@@ -435,11 +492,12 @@ impl Canvas {
             min: Point2::new(0.0, 0.0),
             max: Point2::new(width, height),
         };
-        page.items
+        let content = page
+            .items
             .iter()
             .filter_map(|item| self.render_cache.bounds(item))
-            .reduce(Rect2::union)
-            .map_or(base, |content| base.union(content.expand(EXPORT_MARGIN)))
+            .reduce(Rect2::union);
+        paper_rect(base, content)
     }
 
     /// Reconnaît la forme d'un trait quand le stylet reste immobile, trait posé.
@@ -612,8 +670,15 @@ impl Canvas {
             }
             Tool::Pipette => {
                 let reach = 4.0 / self.view.zoom;
-                if let Some(item) = cx.page.items.iter().rev().find(|i| i.hit(p, reach)) {
-                    cx.tools.color = item.color();
+                let picked = cx
+                    .page
+                    .items
+                    .iter()
+                    .rev()
+                    .filter(|i| i.hit(p, reach))
+                    .find_map(Item::color);
+                if let Some(color) = picked {
+                    cx.tools.color = color;
                     cx.tools.tool = cx.tools.previous;
                 }
             }
@@ -785,6 +850,11 @@ impl Canvas {
             Gesture::EraseStroke { hits, last, .. } => {
                 for q in sweep(*last, p, radius * 0.5) {
                     for item in &cx.page.items {
+                        // Gommer une annotation ne doit pas emporter l'image en dessous : une image
+                        // se supprime en la sélectionnant.
+                        if matches!(item, Item::Image(_)) {
+                            continue;
+                        }
                         // Rejet rapide par le rectangle englobant, avant le test précis.
                         let near = self
                             .render_cache
@@ -875,6 +945,16 @@ impl Canvas {
                     .filter(|i| i.inside_polygon(&points))
                     .map(Item::id)
                     .collect();
+                // Un clic sur une image la sélectionne : entourer une grande image serait pénible.
+                if let (true, Some(start)) = (self.selection.is_empty(), points.first()) {
+                    let touched = cx
+                        .page
+                        .items
+                        .iter()
+                        .rev()
+                        .find(|i| matches!(i, Item::Image(_)) && i.hit(*start, 0.0));
+                    self.selection.extend(touched.map(Item::id));
+                }
             }
             Gesture::Transform { current, .. } => {
                 if current == Similarity::identity() {
@@ -1038,7 +1118,7 @@ impl Canvas {
                 _ => {
                     let shown = moved.as_ref().unwrap_or(item);
                     if shown.bounds().map_or(true, |b| b.intersects(visible)) {
-                        paint_item(painter, shown, view, origin, opacity, dark);
+                        paint_item(painter, shown, view, origin, opacity, dark, cx.images);
                     }
                 }
             }
@@ -1183,6 +1263,34 @@ fn shape_label_key(kind: ShapeKind) -> &'static str {
         ShapeKind::Polygon => "shape-polygon",
         ShapeKind::Curve => "shape-curve",
     }
+}
+
+/// Coupe les lignes d'un texte collé entre les mots, à la largeur de la page : une zone de texte ne
+/// revient pas à la ligne d'elle-même. Une lettre fait en moyenne un demi-corps de large.
+fn wrap_lines(text: &str, font_size: f32) -> String {
+    let max_chars = ((PASTED_TEXT_MAX_WIDTH / (font_size.max(1.0) * 0.5)) as usize).max(10);
+    let mut out = String::with_capacity(text.len());
+    for (i, line) in text.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let mut count = 0;
+        for (j, word) in line.split(' ').enumerate() {
+            let len = word.chars().count();
+            if j > 0 {
+                if count + 1 + len > max_chars {
+                    out.push('\n');
+                    count = 0;
+                } else {
+                    out.push(' ');
+                    count += 1;
+                }
+            }
+            out.push_str(word);
+            count += len;
+        }
+    }
+    out
 }
 
 /// Coins d'un rectangle, dans l'ordre haut-gauche, haut-droit, bas-droit, bas-gauche.
@@ -1353,9 +1461,56 @@ fn draw_paper(
     }
 }
 
-fn paint_item(painter: &Painter, item: &Item, view: View, origin: Pos2, opacity: f32, dark: bool) {
+/// Dessine une texture dans un quadrilatère ; coins dans l'ordre haut-gauche, haut-droit, bas-droit,
+/// bas-gauche.
+pub fn paint_image(painter: &Painter, texture: egui::TextureId, corners: [Pos2; 4], tint: Color32) {
+    let uvs = [
+        Pos2::new(0.0, 0.0),
+        Pos2::new(1.0, 0.0),
+        Pos2::new(1.0, 1.0),
+        Pos2::new(0.0, 1.0),
+    ];
+    let mut mesh = Mesh::with_texture(texture);
+    for (pos, uv) in corners.into_iter().zip(uvs) {
+        mesh.vertices.push(Vertex {
+            pos,
+            uv,
+            color: tint,
+        });
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(Shape::mesh(mesh));
+}
+
+fn paint_item(
+    painter: &Painter,
+    item: &Item,
+    view: View,
+    origin: Pos2,
+    opacity: f32,
+    dark: bool,
+    images: &ImageTextures,
+) {
     match item {
         Item::Stroke(s) => paint_stroke(painter, s, &s.smoothed(6), view, origin, opacity, dark),
+        Item::Image(image) => {
+            let corners = image.corners().map(|p| view.to_screen(origin, p));
+            // En sombre, l'image est légèrement atténuée, comme une image de fond.
+            let gray = if dark { 205 } else { 255 };
+            let tint = Color32::from_gray(gray).gamma_multiply(opacity);
+            match images.get(&image.asset) {
+                Some((texture, _)) => paint_image(painter, texture.id(), corners, tint),
+                // Contenu introuvable : on garde sa place, pour pouvoir la sélectionner.
+                None => {
+                    painter.add(Shape::convex_polygon(
+                        corners.to_vec(),
+                        Color32::from_gray(128).gamma_multiply(0.25),
+                        egui::Stroke::new(1.0, Color32::from_gray(128)),
+                    ));
+                }
+            }
+        }
         Item::Text(t) => {
             let color = ink(t.color, dark).gamma_multiply(opacity);
             let galley = painter.layout(
@@ -1461,6 +1616,33 @@ mod tests {
             sweep(Point2::new(1.0, 1.0), Point2::new(1.0, 1.0), 5.0).count(),
             1
         );
+    }
+
+    #[test]
+    fn long_pasted_lines_are_cut_between_words() {
+        let text = "mot ".repeat(50);
+        let wrapped = wrap_lines(text.trim(), 20.0);
+        assert!(wrapped.lines().count() > 1);
+        assert!(wrapped.lines().all(|line| line.chars().count() <= 67));
+        assert_eq!(wrapped.replace('\n', " "), text.trim());
+        // Les retours à la ligne et l'indentation d'origine sont gardés.
+        assert_eq!(wrap_lines("a\n  b", 20.0), "a\n  b");
+    }
+
+    #[test]
+    fn pasted_images_are_centered_inside_the_page_and_selected() {
+        let (mut canvas, mut page, mut history) =
+            (Canvas::default(), Page::default(), History::default());
+        canvas.viewport_center = Point2::new(400.0, 100.0);
+        canvas.add_image(&mut page, &mut history, AssetId::new(), 2000.0, 1000.0);
+        let Item::Image(image) = &page.items[0] else {
+            unreachable!("une image a été ajoutée");
+        };
+        assert!((image.width - PLACED_IMAGE_MAX_WIDTH).abs() < 1e-3);
+        assert!((image.height - PLACED_IMAGE_MAX_WIDTH / 2.0).abs() < 1e-3);
+        assert!(image.pos.x > 0.0, "centrée en largeur");
+        assert_eq!(image.pos.y, 0.0, "pas de débordement au-dessus de la page");
+        assert!(canvas.has_selection());
     }
 
     #[test]

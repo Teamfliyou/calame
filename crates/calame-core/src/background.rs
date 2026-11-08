@@ -3,6 +3,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::geometry::{Color, Point2, Rect2};
@@ -20,7 +21,7 @@ pub const EXPORT_MARGIN: f32 = 24.0;
 const MAX_LINES_PER_FAMILY: usize = 4000;
 const MAX_DOTS: usize = 40_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AssetId(Uuid);
 
 impl AssetId {
@@ -233,6 +234,29 @@ fn clip_line(area: Rect2, base: Point2, dir: (f32, f32)) -> Option<(Point2, Poin
     })
 }
 
+/// Papier sous le contenu : `base`, agrandie seulement du côté où `content` en dépasse, avec une
+/// marge. Un contenu qui reste sur la feuille n'en change donc pas le format.
+pub fn paper_rect(base: Rect2, content: Option<Rect2>) -> Rect2 {
+    let Some(content) = content else {
+        return base;
+    };
+    let outer = content.expand(EXPORT_MARGIN);
+    let mut area = base;
+    if content.min.x < base.min.x {
+        area.min.x = outer.min.x;
+    }
+    if content.min.y < base.min.y {
+        area.min.y = outer.min.y;
+    }
+    if content.max.x > base.max.x {
+        area.max.x = outer.max.x;
+    }
+    if content.max.y > base.max.y {
+        area.max.y = outer.max.y;
+    }
+    area
+}
+
 /// Zone exportée d'une page : la page A4 (ou l'image de fond) élargie à tout le contenu.
 pub fn export_rect(items: &[Item], image_size: Option<(f32, f32)>) -> Rect2 {
     let (width, height) = image_size.unwrap_or((PAGE_WIDTH, PAGE_HEIGHT));
@@ -240,11 +264,10 @@ pub fn export_rect(items: &[Item], image_size: Option<(f32, f32)>) -> Rect2 {
         min: Point2::new(0.0, 0.0),
         max: Point2::new(width, height),
     };
-    items
-        .iter()
-        .filter_map(Item::bounds)
-        .reduce(Rect2::union)
-        .map_or(base, |content| base.union(content.expand(EXPORT_MARGIN)))
+    paper_rect(
+        base,
+        items.iter().filter_map(Item::bounds).reduce(Rect2::union),
+    )
 }
 
 #[cfg(test)]
@@ -365,5 +388,21 @@ mod tests {
         assert!(r.max.x >= 900.0 + EXPORT_MARGIN - 1e-3);
         assert!(r.min.x <= -50.0 - EXPORT_MARGIN + 1e-3);
         assert_eq!(r.min.y.min(0.0), r.min.y);
+    }
+
+    #[test]
+    fn content_near_the_edges_of_the_sheet_does_not_change_its_format() {
+        let mut stroke = Stroke::new(Brush::default());
+        for p in [Point2::new(5.0, 5.0), Point2::new(780.0, 1110.0)] {
+            stroke.push(StrokePoint {
+                pos: p,
+                pressure: 0.5,
+                tilt: None,
+            });
+        }
+        assert_eq!(
+            export_rect(&[Item::Stroke(stroke)], None),
+            area(PAGE_WIDTH, PAGE_HEIGHT)
+        );
     }
 }

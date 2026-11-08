@@ -135,14 +135,32 @@ exportés.
 pointillés, isométrique, ou **Image…** (PNG ou JPEG) posée en haut à gauche de la page. Le papier
 choisi à la création d'un cahier s'applique à ses nouvelles pages.
 
-## PDF : importer, annoter, exporter
+## Copier, coller, images
+
+**Ctrl+V** colle ce que contient le presse-papiers :
+
+- une **image** (capture d'écran, image copiée depuis le navigateur…) se pose au centre de la zone
+  visible, déjà sélectionnée : déplacez-la, redimensionnez-la par les coins, faites-la pivoter ;
+- un **texte** copié ailleurs devient une zone de texte ;
+- une **sélection** copiée dans Calame (au lasso, Ctrl+C) revient telle quelle, encore modifiable,
+  sur n'importe quelle page. Elle est aussi copiée en image : collez-la dans Word, un mail, etc.
+
+Un fichier PNG ou JPEG se pose de la même façon en le déposant sur la page. Copier un fichier dans
+l'explorateur Windows, lui, ne colle rien : déposez-le plutôt.
+
+Au lasso, un clic sur une image la sélectionne. Les gommes ne touchent pas aux images : pour en retirer
+une, sélectionnez-la puis **Suppr**.
+
+## PDF : importer, annoter, exporter, imprimer
 
 - **Importer un PDF** (accueil, Réglages, **…**, palette, clic droit sur une matière, un cahier ou
   un dossier, ou en déposant le fichier sur la fenêtre) : chaque page devient une page de Calame avec
   la page du PDF en fond. Écrivez par-dessus.
 - **Exporter** (bouton de la barre du haut, palette, ou clic droit sur n'importe quel élément) : PDF
   vectoriel multipage, PNG ou SVG. Un cahier ou un dossier donne un seul PDF, ou un fichier par page
-  pour PNG et SVG.
+  pour PNG et SVG. En PDF, une page qui dépasse le format A4 est découpée en feuilles A4.
+- **Imprimer** (Ctrl+P, bouton **Exporter**, palette) : ouvre ce PDF dans votre lecteur de PDF, d'où
+  vous choisissez l'imprimante.
 
 L'import et l'export se font en arrière-plan : un message s'affiche en haut de la fenêtre.
 
@@ -160,11 +178,13 @@ zip, et **Restaurer une sauvegarde** la remet en place (l'ancienne bibliothèque
 | Ctrl+K | Recherche et commandes |
 | Ctrl+N | Nouvelle page (dans un cahier) ; note rapide (dans la bibliothèque) |
 | Ctrl+E | Exporter la page en PDF |
+| Ctrl+P | Imprimer la page |
 | F11 | Mode concentration |
 | P, H, E, L, T, I, R | Stylo, surligneur, gomme, lasso, texte, pipette, instruments |
 | Ctrl+Z | Annuler |
 | Ctrl+Maj+Z, Ctrl+Y | Rétablir |
-| Ctrl+C, Ctrl+X, Ctrl+V | Copier, couper, coller la sélection (entre pages) |
+| Ctrl+C, Ctrl+X | Copier, couper la sélection (entre pages, et vers d'autres applications en image) |
+| Ctrl+V | Coller une sélection, une image ou un texte |
 | Ctrl+A | Tout sélectionner (passe au lasso) |
 | Suppr, Retour arrière | Supprimer la sélection |
 | Échap | Fermer la bulle, désélectionner, quitter la concentration |
