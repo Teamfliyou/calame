@@ -285,6 +285,9 @@ impl CalameApp {
         if let Some(text) = read(self, "shapes") {
             self.tools.shape_recognition = text == "1";
         }
+        if let Some(text) = read(self, "page-mode") {
+            self.tools.infinite_page = text != "a4";
+        }
         if let Some(text) = read(self, "dock-position") {
             self.editor.dock_position = DockPosition::from_setting(&text);
         }
@@ -822,6 +825,10 @@ impl CalameApp {
                 };
                 self.save_setting("shapes", value);
             }
+            Command::PageModeChanged(infinite) => {
+                self.tools.infinite_page = infinite;
+                self.save_setting("page-mode", if infinite { "infinite" } else { "a4" });
+            }
             Command::PensChanged => {
                 let text = self.tools.pens_to_string();
                 self.save_setting("pens", &text);
@@ -1118,6 +1125,7 @@ impl CalameApp {
             zoom: self.canvas.view.zoom,
             background: self.background,
             dock_position: self.editor.dock_position,
+            infinite_page: self.tools.infinite_page,
         }
     }
 

@@ -3,6 +3,15 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le projet suit le
 [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [1.2.0]
+
+### Ajouté
+- **Curseur « ∞ | A4 » dans la barre du haut** : page infinie (la feuille grandit avec le contenu) ou feuille
+  A4 fixe, dans laquelle on n'écrit pas hors de la feuille. Le choix est enregistré.
+
+### Modifié
+- Les publications GitHub se font automatiquement (Windows) à chaque envoi d'une nouvelle version sur `main`.
+
 ## [1.1.0]
 
 ### Ajouté

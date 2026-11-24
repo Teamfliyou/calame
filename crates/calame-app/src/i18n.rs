@@ -11,6 +11,7 @@ pub fn t(key: &str) -> &'static str {
         "undo" => "Annuler",
         "redo" => "Rétablir",
         "reset-view" => "Recentrer",
+        "page-mode-hint" => "Page infinie (∞) ou feuille A4 fixe",
         "dark-theme" => "Thème sombre",
         "library" => "Bibliothèque",
         "search-hint" => "Rechercher…",

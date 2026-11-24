@@ -42,6 +42,8 @@ pub enum Command {
     PensChanged,
     /// La reconnaissance automatique de formes a été activée ou désactivée : à enregistrer.
     ShapesChanged,
+    /// Le mode de page (infinie ou A4) a changé : à enregistrer.
+    PageModeChanged(bool),
     AddInstrument(InstrumentKind),
     RemoveInstrument,
     ClearInstruments,
@@ -91,6 +93,8 @@ pub struct EditorState {
     pub zoom: f32,
     pub background: Background,
     pub dock_position: DockPosition,
+    /// Page infinie (vrai) ou feuille A4 fixe (faux).
+    pub infinite_page: bool,
 }
 
 /// Où flotte la barre d'outils au-dessus de la page.
@@ -261,10 +265,15 @@ pub fn top_bar(ui: &mut Ui, state: &EditorState) -> Vec<Command> {
 
         // Le chemin prend la place restante, moins le groupe d'actions de droite.
         let export_width = 110.0;
-        let right = 6.0 * 42.0 + 14.0 + export_width;
+        let right = 6.0 * 42.0 + 14.0 + export_width + 100.0;
         let width = (ui.available_width() - right).max(60.0);
         let (rect, _) = ui.allocate_exact_size(vec2(width, 40.0), Sense::hover());
         breadcrumb(ui, rect, state);
+
+        if let Some(infinite) = page_mode_switch(ui, state.infinite_page, dark) {
+            commands.push(Command::PageModeChanged(infinite));
+        }
+        widgets::vertical_separator(ui, 22.0, 6.0);
 
         if widgets::icon_button(
             ui,
@@ -354,6 +363,51 @@ pub fn top_bar(ui: &mut Ui, state: &EditorState) -> Vec<Command> {
 }
 
 /// Matière / Cahier / **Page**, puis « ✓ Enregistré ».
+/// Curseur à deux positions « ∞ | A4 » : page sans limite de hauteur ou feuille A4 fixe.
+/// Renvoie le nouveau mode quand on clique.
+fn page_mode_switch(ui: &mut Ui, infinite: bool, dark: bool) -> Option<bool> {
+    let (rect, response) = ui.allocate_exact_size(vec2(86.0, 28.0), Sense::click());
+    let response = response
+        .on_hover_text(t("page-mode-hint"))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    let slide = ui.ctx().animate_bool(response.id, !infinite);
+    let painter = ui.painter();
+    painter.rect_filled(rect, 14.0, theme::hover(dark));
+    painter.rect_stroke(
+        rect,
+        14.0,
+        Stroke::new(1.0, theme::border(dark)),
+        egui::StrokeKind::Inside,
+    );
+    let half = rect.width() / 2.0;
+    let knob = Rect::from_min_size(
+        rect.min + vec2(2.0 + slide * (half - 4.0), 2.0),
+        vec2(half, rect.height() - 4.0),
+    );
+    painter.rect_filled(knob, 12.0, theme::surface(dark));
+    painter.rect_stroke(
+        knob,
+        12.0,
+        Stroke::new(1.0, theme::border(dark)),
+        egui::StrokeKind::Inside,
+    );
+    for (i, (label, active)) in [("∞", infinite), ("A4", !infinite)].into_iter().enumerate() {
+        let color = if active {
+            theme::label(dark)
+        } else {
+            theme::label_secondary(dark)
+        };
+        painter.text(
+            pos2(rect.min.x + half * (i as f32 + 0.5), rect.center().y),
+            Align2::CENTER_CENTER,
+            label,
+            theme::font(13.0, Weight::Medium),
+            color,
+        );
+    }
+    response.clicked().then_some(!infinite)
+}
+
 fn breadcrumb(ui: &Ui, rect: Rect, state: &EditorState) {
     let dark = state.dark;
     let painter = ui.painter_at(rect);

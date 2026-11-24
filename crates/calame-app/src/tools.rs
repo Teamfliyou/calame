@@ -87,6 +87,8 @@ pub struct ToolSettings {
     pub favorites: Vec<Color>,
     /// Reconnaît chaque trait au relâchement (sinon : seulement après un maintien immobile).
     pub shape_recognition: bool,
+    /// Page sans limite de hauteur (vrai) ou feuille A4 fixe (faux) : réglage enregistré.
+    pub infinite_page: bool,
     /// Contenu du champ de saisie hexadécimale.
     pub hex: String,
     /// Stylos préréglés de la trousse, enregistrés dans les réglages.
@@ -109,6 +111,7 @@ impl Default for ToolSettings {
             text_size: 20.0,
             favorites: Vec::new(),
             shape_recognition: false,
+            infinite_page: true,
             hex: DEFAULT_PENS[0].color.to_hex(),
             pens: DEFAULT_PENS.to_vec(),
             eraser: Tool::EraserStroke,

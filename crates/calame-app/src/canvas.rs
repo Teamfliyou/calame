@@ -167,6 +167,10 @@ pub struct Canvas {
     centered: bool,
     /// Zone du canevas à l'écran lors de la dernière image.
     last_rect: Rect,
+    /// Feuille de base (A4 ou image de fond) de la dernière image, pour le mode A4.
+    sheet: Rect2,
+    /// Feuille de base (A4 ou image de fond) à la dernière image : limite du mode A4.
+    base_sheet: Rect2,
 }
 
 impl Default for Canvas {
@@ -184,6 +188,14 @@ impl Default for Canvas {
             notice: None,
             centered: false,
             last_rect: Rect::NOTHING,
+            sheet: Rect2 {
+                min: Point2::new(0.0, 0.0),
+                max: Point2::new(PAGE_WIDTH, PAGE_HEIGHT),
+            },
+            base_sheet: Rect2 {
+                min: Point2::new(0.0, 0.0),
+                max: Point2::new(PAGE_WIDTH, PAGE_HEIGHT),
+            },
         }
     }
 }
@@ -430,6 +442,8 @@ impl Canvas {
         let painter = ui.painter_at(rect);
         let origin = rect.min;
         self.last_rect = rect;
+        self.sheet = self.paper_area(page, backdrop, false);
+        self.base_sheet = self.paper_area(page, backdrop, false);
         if !self.centered {
             self.center_page(rect, backdrop);
         }
@@ -484,7 +498,7 @@ impl Canvas {
 
     /// Papier sous le contenu : la page A4 (ou l'image de fond), agrandie au contenu comme à
     /// l'export. Les rectangles englobants viennent du cache de rendu.
-    fn paper_area(&self, page: &Page, backdrop: &Backdrop) -> Rect2 {
+    fn paper_area(&self, page: &Page, backdrop: &Backdrop, infinite: bool) -> Rect2 {
         let (width, height) = backdrop
             .image
             .map_or((PAGE_WIDTH, PAGE_HEIGHT), |(_, size)| (size.x, size.y));
@@ -492,6 +506,10 @@ impl Canvas {
             min: Point2::new(0.0, 0.0),
             max: Point2::new(width, height),
         };
+        // Feuille A4 fixe : le papier ne grandit pas avec le contenu.
+        if !infinite {
+            return base;
+        }
         let content = page
             .items
             .iter()
@@ -622,6 +640,15 @@ impl Canvas {
         // Toucher la page valide un texte en cours de saisie.
         self.commit_text(cx);
         let p = self.view.to_page(origin, pos);
+        // En mode A4, on n'écrit pas sur le bureau, hors de la feuille.
+        if !cx.tools.infinite_page
+            && matches!(cx.tools.tool, Tool::Pen | Tool::Highlighter | Tool::Text)
+        {
+            let sheet = self.base_sheet;
+            if p.x < sheet.min.x || p.x > sheet.max.x || p.y < sheet.min.y || p.y > sheet.max.y {
+                return;
+            }
+        }
         match cx.tools.tool {
             Tool::Pen | Tool::Highlighter => {
                 self.selection.clear();
@@ -1072,7 +1099,7 @@ impl Canvas {
             painter,
             rect,
             view,
-            self.paper_area(cx.page, backdrop),
+            self.paper_area(cx.page, backdrop, cx.tools.infinite_page),
             backdrop,
             dark,
         );
