@@ -39,6 +39,23 @@ cargo test --workspace
 - Une modification du format de stockage change `SCHEMA_VERSION`, ajoute une migration testée et met
   à jour [docs/format.md](docs/format.md).
 
+## Publier une version
+
+Changez la version dans `Cargo.toml` (et celles des dépendances internes), complétez
+`CHANGELOG.md`, puis envoyez sur `main` : le workflow construit l'installeur et publie.
+
+La mise à jour automatique demande une préparation, **une seule fois** :
+
+```powershell
+.\scripts\setup-updater.ps1
+```
+
+Le script crée la clé de signature avec l'outil de Tauri (hors du dépôt, dans
+`%USERPROFILE%\.calame`), l'enregistre dans les secrets GitHub et écrit la clé publique dans
+`crates/calame-app/updater.pub`, à enregistrer dans git. Conservez la clé : les versions déjà
+installées refusent un installeur signé avec une autre. Tant que `updater.pub` est vide, la
+publication se fait sans mise à jour automatique.
+
 ## Mesures de performance
 
 Les mesures sur de grandes pages sont des tests ignorés par défaut :

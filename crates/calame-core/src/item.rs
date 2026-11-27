@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::background::AssetId;
 use crate::geometry::{point_in_polygon, Color, Point2, Rect2, Similarity};
+use crate::grafcet::GrafcetSymbol;
 use crate::stroke::Stroke;
 
 /// Les quatre coins d'un rectangle pivoté autour de son coin haut-gauche `pos`, dans l'ordre
@@ -114,6 +115,7 @@ pub enum Item {
     Stroke(Stroke),
     Text(TextBox),
     Image(ImageBox),
+    Grafcet(GrafcetSymbol),
 }
 
 impl Item {
@@ -122,6 +124,7 @@ impl Item {
             Self::Stroke(s) => s.id,
             Self::Text(t) => t.id,
             Self::Image(i) => i.id,
+            Self::Grafcet(g) => g.id,
         }
     }
 
@@ -130,6 +133,7 @@ impl Item {
             Self::Stroke(s) => s.bounds(),
             Self::Text(t) => Rect2::from_points(t.corners()),
             Self::Image(i) => Rect2::from_points(i.corners()),
+            Self::Grafcet(g) => g.bounds(),
         }
     }
 
@@ -139,6 +143,7 @@ impl Item {
             Self::Stroke(s) => s.hit(p, radius),
             Self::Text(t) => t.contains(p, radius),
             Self::Image(i) => rotated_contains(i.pos, i.angle, i.width, i.height, p, radius),
+            Self::Grafcet(g) => g.hit(p, radius),
         }
     }
 
@@ -162,6 +167,10 @@ impl Item {
                 point_in_polygon(a.lerp(c, 0.5), polygon)
             }
             Self::Image(i) => i.corners().iter().all(|c| point_in_polygon(*c, polygon)),
+            // Le centre du symbole, comme un texte.
+            Self::Grafcet(g) => g
+                .bounds()
+                .is_some_and(|b| point_in_polygon(b.center(), polygon)),
         }
     }
 
@@ -185,6 +194,7 @@ impl Item {
                 out.angle += t.angle;
                 Self::Image(out)
             }
+            Self::Grafcet(g) => Self::Grafcet(g.transformed(t)),
         }
     }
 
@@ -194,6 +204,7 @@ impl Item {
             Self::Stroke(s) => s.brush.color,
             Self::Text(t) => t.color,
             Self::Image(_) => return None,
+            Self::Grafcet(g) => g.color,
         };
         Some(Color::rgb(c.r, c.g, c.b))
     }
@@ -205,6 +216,7 @@ impl Item {
             Self::Stroke(s) => &mut s.brush.color,
             Self::Text(t) => &mut t.color,
             Self::Image(_) => return,
+            Self::Grafcet(g) => &mut g.color,
         };
         *target = Color {
             a: target.a,
@@ -219,6 +231,7 @@ impl Item {
             Self::Stroke(s) => s.id = Uuid::new_v4(),
             Self::Text(t) => t.id = Uuid::new_v4(),
             Self::Image(i) => i.id = Uuid::new_v4(),
+            Self::Grafcet(g) => g.id = Uuid::new_v4(),
         }
         out
     }

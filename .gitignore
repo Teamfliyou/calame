@@ -4,3 +4,6 @@
 *.db-wal
 .claude/
 /dist
+
+# Clé privée de signature des mises à jour : ne doit jamais être publiée.
+*.key

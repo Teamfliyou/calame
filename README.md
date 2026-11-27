@@ -8,8 +8,8 @@ souris et au tactile. Cibles : Windows (priorité), Linux, macOS.
 
 ![Icône de Calame](assets/icon.png)
 
-**État : version 1.0.** Les notes sont stockées localement, sans compte ni
-connexion. Voir les [limites connues](#limites-connues).
+**État : version 1.3.** Les notes sont stockées localement, sans compte ; la connexion ne sert qu'aux
+mises à jour. Voir les [limites connues](#limites-connues).
 
 ## Fonctionnalités
 
@@ -30,6 +30,8 @@ connexion. Voir les [limites connues](#limites-connues).
 - **Formes parfaites** : droite, cercle, ellipse, rectangle, carré, triangle, flèche, polygone, courbe
   lissée, par maintien du stylet ou bouton. Un Ctrl+Z rend le trait d'origine. Tout est local.
 - **Instruments** : règle graduée, équerres, rapporteur, compas ; le trait se cale sur leur bord.
+- **Grafcet** : étapes numérotées, transitions, actions, renvois, liaisons et divergences en OU et en
+  ET, alignés et reliés automatiquement.
 
 **Pages et fichiers**
 - Fonds de page : uni, petits et grands carreaux, lignes, pointillés, isométrique, image.

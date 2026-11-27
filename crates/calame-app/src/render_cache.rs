@@ -68,7 +68,7 @@ impl RenderCache {
     pub fn bounds(&self, item: &Item) -> Option<Rect2> {
         match item {
             Item::Stroke(s) => self.get(s).bounds,
-            Item::Text(_) | Item::Image(_) => item.bounds(),
+            Item::Text(_) | Item::Image(_) | Item::Grafcet(_) => item.bounds(),
         }
     }
 
@@ -220,7 +220,7 @@ pub(crate) mod perf {
             .iter()
             .map(|i| match i {
                 Item::Stroke(s) => s.points.len(),
-                Item::Text(_) | Item::Image(_) => 0,
+                Item::Text(_) | Item::Image(_) | Item::Grafcet(_) => 0,
             })
             .sum();
         let cache = RenderCache::default();

@@ -4,7 +4,10 @@ use std::fmt::Write as _;
 
 use base64::Engine as _;
 use calame_core::background::export_rect;
-use calame_core::{BrushKind, Color, ImageBox, Item, Page, Rect2, Stroke, StrokePoint, TextBox};
+use calame_core::grafcet::{Anchor, Prim};
+use calame_core::{
+    BrushKind, Color, GrafcetSymbol, ImageBox, Item, Page, Rect2, Stroke, StrokePoint, TextBox,
+};
 
 use crate::{BackgroundImage, PageBackground, PageImages};
 
@@ -79,6 +82,7 @@ fn items_into(out: &mut String, items: &[Item], images: &PageImages) {
         match item {
             Item::Stroke(s) => stroke_svg(out, s),
             Item::Text(t) => text_svg(out, t),
+            Item::Grafcet(g) => grafcet_svg(out, g),
             Item::Image(placed) => {
                 if let Some(img) = images.get(&placed.asset) {
                     placed_image_svg(out, placed, img);
@@ -306,4 +310,81 @@ fn text_svg(out: &mut String, text: &TextBox) {
         );
     }
     out.push_str("</text>");
+}
+
+fn grafcet_svg(out: &mut String, symbol: &GrafcetSymbol) {
+    let (color, alpha) = (hex(symbol.color), opacity(symbol.color));
+    let _ = write!(out, "<g opacity=\"{alpha}\">");
+    for prim in symbol.prims() {
+        match prim {
+            Prim::Line { a, b, width } => {
+                let _ = write!(
+                    out,
+                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{color}\" \
+                     stroke-width=\"{}\" stroke-linecap=\"square\"/>",
+                    n(a.x),
+                    n(a.y),
+                    n(b.x),
+                    n(b.y),
+                    n(width)
+                );
+            }
+            Prim::Rect { min, max, width } => {
+                let _ = write!(
+                    out,
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"none\" \
+                     stroke=\"{color}\" stroke-width=\"{}\"/>",
+                    n(min.x),
+                    n(min.y),
+                    n(max.x - min.x),
+                    n(max.y - min.y),
+                    n(width)
+                );
+            }
+            Prim::Filled { min, max } => {
+                let _ = write!(
+                    out,
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{color}\"/>",
+                    n(min.x),
+                    n(min.y),
+                    n(max.x - min.x),
+                    n(max.y - min.y)
+                );
+            }
+            Prim::Text {
+                at,
+                anchor,
+                text,
+                size,
+                height,
+                ..
+            } => {
+                let lines: Vec<&str> = text.split('\n').collect();
+                let line_height = height / lines.len() as f32;
+                let anchor = match anchor {
+                    Anchor::Center => "middle",
+                    Anchor::LeftMiddle => "start",
+                };
+                let _ = write!(
+                    out,
+                    "<text font-family=\"sans-serif\" font-size=\"{}\" fill=\"{color}\" \
+                     text-anchor=\"{anchor}\" xml:space=\"preserve\">",
+                    n(size)
+                );
+                for (i, line) in lines.iter().enumerate() {
+                    // Ligne de base à 80 % de la hauteur de ligne, comme pour un texte.
+                    let y = at.y - height / 2.0 + line_height * (i as f32 + 0.8);
+                    let _ = write!(
+                        out,
+                        "<tspan x=\"{}\" y=\"{}\">{}</tspan>",
+                        n(at.x),
+                        n(y),
+                        escape(line)
+                    );
+                }
+                out.push_str("</text>");
+            }
+        }
+    }
+    out.push_str("</g>");
 }

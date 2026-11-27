@@ -1,7 +1,7 @@
 # Guide d'utilisation de Calame
 
 Calame prend des notes manuscrites avec un stylet, une souris ou le doigt. Tout est enregistré
-automatiquement sur votre ordinateur, sans compte ni connexion.
+automatiquement sur votre ordinateur, sans compte ; la connexion ne sert qu'aux mises à jour.
 
 ## La bibliothèque
 
@@ -63,6 +63,7 @@ Le **dock**, en bas, rassemble les outils :
 | **Texte** | T | Clic sur la page pour taper ; clic sur un texte pour le modifier |
 | **Pipette** | I | Prend la couleur du trait ou du texte touché |
 | **Règle et instruments** | R | Règle, équerres, rapporteur, compas (voir plus bas) |
+| **Grafcet** | G | Étapes, transitions, actions et liaisons (voir plus bas) |
 
 Un **second clic sur l'outil actif** ouvre la **bulle de réglages** : palette complète, couleur sur
 mesure (teinte, saturation, valeur), code hexadécimal, couleurs favorites (★ pour ajouter, clic droit
@@ -129,6 +130,30 @@ d'une équerre, arc le long du rapporteur, cercle autour du compas). Un repère 
 trait s'accrochera. Les instruments ne font pas partie de la note : ils ne sont ni enregistrés ni
 exportés.
 
+## Grafcet
+
+Choisissez **Grafcet** (G) : une palette apparaît près du dock. Les symboles prennent la couleur
+courante (un second clic sur l'outil ouvre les couleurs).
+
+| Symbole | Comment le poser |
+|---|---|
+| **Initiale**, **Étape** | Un clic. Le numéro est automatique (0 pour la première étape initiale) |
+| **Transition** | Un clic, puis tapez la réceptivité et **Entrée** |
+| **Action** | Un clic à droite d'une étape, puis tapez l'action et **Entrée** |
+| **Renvoi** | Un clic, puis tapez le numéro de l'étape visée |
+| **Liaison**, **Flèche** | Glissez : trait vertical ou horizontal |
+| **Div. OU**, **Div. ET** | Glissez à l'horizontale : trait simple ou double |
+
+Pour construire une colonne, posez les symboles les uns sous les autres : chacun s'aligne sur celui
+du dessus et lui est relié. Une étape posée sous une étape reçoit entre les deux la transition qui
+manque. Un aperçu pâle montre ce que le clic va ajouter ; tout s'aimante à une grille.
+
+Un clic sur un symbole à texte (étape, transition, action, renvoi) permet de **modifier son texte**.
+Pour déplacer, redimensionner, copier ou supprimer des symboles, utilisez le **lasso** (un clic en
+sélectionne un) ; la gomme de trait entier les efface aussi. Les symboles déplacés ne gardent pas
+leurs liaisons : sélectionnez-les ensemble. Chaque symbole reste droit quand on fait pivoter la
+sélection.
+
 ## Fonds de page
 
 **… ▸ Fond de page** (ou la palette) : uni, petits carreaux (5 mm), grands carreaux (8 mm), lignes,
@@ -171,6 +196,15 @@ la fermeture. La bibliothèque est un fichier SQLite unique (voir [format.md](fo
 **Sauvegarder la bibliothèque** (Réglages, **…** ou palette) écrit une copie complète dans un fichier
 zip, et **Restaurer une sauvegarde** la remet en place (l'ancienne bibliothèque est gardée à côté).
 
+## Mises à jour
+
+Sous Windows, la version installée cherche une nouvelle version à chaque démarrage, sur la page des
+publications du projet. Elle propose **Installer et redémarrer** : le travail est enregistré,
+l'installeur est téléchargé, sa signature vérifiée, puis Calame se rouvre. **Plus tard** ignore la
+proposition jusqu'au prochain démarrage. **Rechercher une mise à jour** (Réglages ou **…**) lance la
+recherche à la demande. La version portable signale la nouvelle version et ouvre la page de
+téléchargement. Aucune note n'est envoyée.
+
 ## Raccourcis
 
 | Raccourci | Action |
@@ -180,7 +214,7 @@ zip, et **Restaurer une sauvegarde** la remet en place (l'ancienne bibliothèque
 | Ctrl+E | Exporter la page en PDF |
 | Ctrl+P | Imprimer la page |
 | F11 | Mode concentration |
-| P, H, E, L, T, I, R | Stylo, surligneur, gomme, lasso, texte, pipette, instruments |
+| P, H, E, L, T, I, R, G | Stylo, surligneur, gomme, lasso, texte, pipette, instruments, grafcet |
 | Ctrl+Z | Annuler |
 | Ctrl+Maj+Z, Ctrl+Y | Rétablir |
 | Ctrl+C, Ctrl+X | Copier, couper la sélection (entre pages, et vers d'autres applications en image) |

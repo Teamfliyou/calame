@@ -51,5 +51,13 @@ Name: "{autodesktop}\Calame"; Filename: "{app}\Calame.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Calame.exe"; Description: "Lancer Calame"; Flags: nowait postinstall skipifsilent
+; Mise à jour lancée par l'application : elle est rouverte à la fin.
+Filename: "{app}\Calame.exe"; Flags: nowait; Check: Relaunch
+
+[Code]
+function Relaunch: Boolean;
+begin
+  Result := WizardSilent and (Pos('/RELAUNCH', Uppercase(GetCmdTail)) > 0);
+end;
 
 ; Les notes (%APPDATA%\calame) ne sont volontairement pas supprimées à la désinstallation.

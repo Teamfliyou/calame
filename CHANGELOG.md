@@ -3,6 +3,20 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le projet suit le
 [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [1.3.0]
+
+### Ajouté
+- **Outil Grafcet** (touche G) : étapes initiales et normales numérotées automatiquement,
+  transitions avec leur réceptivité, actions, renvois, liaisons, liaisons orientées et
+  divergences en OU et en ET. Un symbole posé sous un autre s'y relie, la transition manquante
+  s'insère entre deux étapes, et un aperçu montre où le clic posera le symbole.
+- **Mise à jour automatique** (Windows, version installée) : Calame signale une nouvelle version au
+  démarrage, la télécharge, vérifie sa signature, l'installe et redémarre. Aussi dans les menus :
+  « Rechercher une mise à jour ».
+
+### Format
+- Les pages qui contiennent un grafcet ne s'ouvrent pas avec les versions précédentes.
+
 ## [1.2.0]
 
 ### Ajouté

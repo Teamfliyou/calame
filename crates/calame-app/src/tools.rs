@@ -1,6 +1,6 @@
 //! Outils de dessin et réglages courants (couleur, épaisseurs, favoris, trousse de stylos).
 
-use calame_core::{Brush, BrushKind, Color};
+use calame_core::{Brush, BrushKind, Color, GrafcetKind};
 
 use crate::shortcuts::ToolShortcuts;
 
@@ -18,6 +18,8 @@ pub enum Tool {
     Pipette,
     /// Déplacer, tourner et régler règle, équerre, rapporteur et compas.
     Instruments,
+    /// Étapes, transitions, actions et liaisons d'un grafcet.
+    Grafcet,
 }
 
 pub const PALETTE: [Color; 12] = [
@@ -97,6 +99,8 @@ pub struct ToolSettings {
     pub eraser: Tool,
     /// Raccourcis clavier des outils et des stylos, réglés dans les paramètres.
     pub shortcuts: ToolShortcuts,
+    /// Symbole que pose l'outil Grafcet.
+    pub grafcet: GrafcetKind,
 }
 
 impl Default for ToolSettings {
@@ -116,6 +120,7 @@ impl Default for ToolSettings {
             pens: DEFAULT_PENS.to_vec(),
             eraser: Tool::EraserStroke,
             shortcuts: ToolShortcuts::default(),
+            grafcet: GrafcetKind::InitialStep,
         }
     }
 }

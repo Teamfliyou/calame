@@ -18,7 +18,7 @@ pub enum Target {
 }
 
 /// Les outils du bandeau, dans l'ordre d'affichage.
-pub const TOOL_TARGETS: [Tool; 7] = [
+pub const TOOL_TARGETS: [Tool; 8] = [
     Tool::Pen,
     Tool::Highlighter,
     Tool::EraserStroke,
@@ -26,6 +26,7 @@ pub const TOOL_TARGETS: [Tool; 7] = [
     Tool::Text,
     Tool::Pipette,
     Tool::Instruments,
+    Tool::Grafcet,
 ];
 
 fn tool_id(tool: Tool) -> &'static str {
@@ -37,6 +38,7 @@ fn tool_id(tool: Tool) -> &'static str {
         Tool::Text => "text",
         Tool::Pipette => "pipette",
         Tool::Instruments => "instruments",
+        Tool::Grafcet => "grafcet",
     }
 }
 
@@ -204,6 +206,7 @@ impl Default for ToolShortcuts {
                 (Target::Tool(Tool::Text), Chord::plain(Key::T)),
                 (Target::Tool(Tool::Pipette), Chord::plain(Key::I)),
                 (Target::Tool(Tool::Instruments), Chord::plain(Key::R)),
+                (Target::Tool(Tool::Grafcet), Chord::plain(Key::G)),
             ],
         }
     }

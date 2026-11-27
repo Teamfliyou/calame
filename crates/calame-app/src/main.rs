@@ -20,6 +20,7 @@ mod theme;
 mod thumbs;
 mod toolbar;
 mod tools;
+mod updates;
 mod widgets;
 
 use std::collections::{HashMap, HashSet};
@@ -122,6 +123,8 @@ struct CalameApp {
     unreadable_images: HashSet<AssetId>,
     /// Import ou export en cours dans un fil séparé.
     task: Option<Task>,
+    /// Recherche et installation des nouvelles versions.
+    updates: updates::Updates,
     /// Date de dernière modification de chaque page (secondes Unix).
     stamps: HashMap<NodeId, i64>,
     thumbs: Thumbs,
@@ -204,6 +207,7 @@ impl CalameApp {
             textures: HashMap::new(),
             unreadable_images: HashSet::new(),
             task: None,
+            updates: updates::Updates::default(),
             stamps: HashMap::new(),
             thumbs: Thumbs::default(),
             papers: HashMap::new(),
@@ -770,6 +774,10 @@ impl CalameApp {
                 self.editor.dock_position = position;
                 self.editor.bubble = false;
                 self.save_setting("dock-position", position.as_setting());
+            }
+            Command::CheckUpdates => {
+                let event = self.updates.check(ctx, true);
+                self.follow_update(event);
             }
             Command::OpenShortcuts => {
                 self.shortcuts_open = true;
@@ -1375,6 +1383,30 @@ impl CalameApp {
         }
     }
 
+    /// Suites d'une recherche de mise à jour : message, ou installation.
+    fn follow_update(&mut self, event: Option<updates::Event>) {
+        match event {
+            None => {}
+            Some(updates::Event::Status(text)) => {
+                self.status = (!text.is_empty()).then_some(text);
+            }
+            Some(updates::Event::Error(text)) => {
+                self.status = None;
+                self.error = Some(text);
+            }
+            Some(updates::Event::Install(update, bytes)) => {
+                // L'installation ferme le programme : rien ne doit rester à enregistrer.
+                self.save_current();
+                if self.current.as_ref().is_some_and(OpenPage::is_dirty) {
+                    return;
+                }
+                if let Err(e) = updates::install(&update, bytes) {
+                    self.error = Some(e);
+                }
+            }
+        }
+    }
+
     /// Fichiers déposés sur la fenêtre : un PDF est importé dans la matière choisie ou le cahier
     /// ouvert ; les images sont posées sur la page ouverte.
     fn dropped_files(&mut self, ctx: &egui::Context, actions: &mut Vec<Action>) {
@@ -1484,6 +1516,8 @@ impl eframe::App for CalameApp {
             let text = self.tools.shortcuts.to_setting();
             self.save_setting("tool-shortcuts", &text);
         }
+        let update = self.updates.show(&ctx);
+        self.follow_update(update);
         self.toasts(&ctx);
         self.dropped_files(&ctx, &mut actions);
 
@@ -1540,7 +1574,14 @@ fn main() -> anyhow::Result<()> {
     let result = eframe::run_native(
         "Calame",
         options,
-        Box::new(|cc| Ok(Box::new(CalameApp::new(cc)?))),
+        Box::new(|cc| {
+            let mut app = CalameApp::new(cc)?;
+            // Pas de recherche au démarrage en développement.
+            if !cfg!(debug_assertions) {
+                app.updates.check(&cc.egui_ctx, false);
+            }
+            Ok(Box::new(app))
+        }),
     )
     .map_err(|e| anyhow!("échec du lancement de la fenêtre : {e}"));
     // Sans console, une erreur de démarrage passerait inaperçue.

@@ -435,3 +435,66 @@ fn dense_strokes_do_not_bloat_the_svg() {
     );
     parse(&svg).expect("SVG lisible");
 }
+
+/// Un grafcet construit comme à l'écran : étape initiale, action, transition, étape, retour.
+#[test]
+fn grafcet_symbols_are_exported() {
+    use calame_core::grafcet::{line_symbol, place};
+    use calame_core::GrafcetKind;
+
+    let mut items: Vec<Item> = Vec::new();
+    let clicks = [
+        (GrafcetKind::InitialStep, 300.0, 120.0, ""),
+        (GrafcetKind::Action, 380.0, 120.0, "Attendre"),
+        (
+            GrafcetKind::Transition,
+            300.0,
+            190.0,
+            "Départ cycle . capteur",
+        ),
+        (GrafcetKind::Step, 300.0, 260.0, ""),
+        (GrafcetKind::Action, 380.0, 260.0, "Sortir vérin A+"),
+        (GrafcetKind::Step, 300.0, 380.0, ""),
+        (GrafcetKind::Action, 380.0, 380.0, "Rentrer vérin A-"),
+        (GrafcetKind::Transition, 300.0, 440.0, "a0"),
+        (GrafcetKind::Jump, 300.0, 500.0, "0"),
+    ];
+    for (kind, x, y, text) in clicks {
+        let mut symbols = place(kind, Point2::new(x, y), &items, Color::BLACK);
+        if let Some(last) = symbols.last_mut() {
+            if !text.is_empty() {
+                last.set_text(text.into());
+            }
+        }
+        items.extend(symbols.into_iter().map(Item::Grafcet));
+    }
+    for (kind, from, to) in [
+        (GrafcetKind::And, (150.0, 560.0), (450.0, 560.0)),
+        (GrafcetKind::Or, (150.0, 600.0), (450.0, 600.0)),
+        (GrafcetKind::Arrow, (150.0, 700.0), (150.0, 620.0)),
+    ] {
+        let line = line_symbol(
+            kind,
+            Point2::new(from.0, from.1),
+            Point2::new(to.0, to.1),
+            &items,
+            Color::BLACK,
+        );
+        items.extend(line.map(Item::Grafcet));
+    }
+    let page = Page { items };
+    let svg = page_svg(&page, &PageBackground::Pattern(Background::Blank));
+    for text in [
+        "Attendre",
+        "Départ cycle . capteur",
+        "Sortir vérin A+",
+        "a0",
+    ] {
+        assert!(svg.contains(text), "texte absent : {text}");
+    }
+    assert!(svg.contains("<line ") && svg.contains("fill=\"none\""));
+    if let Some(path) = std::env::var_os("CALAME_GRAFCET_PNG") {
+        let png = svg_to_png(&svg, 1.5).expect("png");
+        std::fs::write(path, png).expect("écriture");
+    }
+}

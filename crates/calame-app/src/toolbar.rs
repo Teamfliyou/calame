@@ -2,7 +2,7 @@
 //! sélection au lasso et pastille de zoom (maquettes `Editeur` et `Concentration`).
 
 use calame_core::background::PATTERN_BACKGROUNDS;
-use calame_core::{Background, BrushKind, Color, InstrumentKind};
+use calame_core::{Background, BrushKind, Color, GrafcetKind, InstrumentKind};
 use egui::{pos2, vec2, Align, Align2, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::files::ExportFormat;
@@ -26,6 +26,8 @@ pub enum Command {
     SetDockPosition(DockPosition),
     /// Ouvre la fenêtre des raccourcis des outils.
     OpenShortcuts,
+    /// Cherche une nouvelle version de Calame.
+    CheckUpdates,
     Copy,
     Cut,
     Paste,
@@ -549,6 +551,7 @@ fn more_menu(ui: &mut Ui, state: &EditorState, commands: &mut Vec<Command>) {
     };
     item(ui, true, theme_key, Command::SetDark(!state.dark));
     item(ui, true, "shortcuts", Command::OpenShortcuts);
+    item(ui, true, "check-updates", Command::CheckUpdates);
     ui.separator();
     item(ui, true, "backup", Command::Backup);
     item(ui, true, "restore-backup", Command::RestoreBackup);
@@ -558,7 +561,7 @@ fn more_menu(ui: &mut Ui, state: &EditorState, commands: &mut Vec<Command>) {
 
 // ---- Dock d'outils ----------------------------------------------------------------------
 
-const TOOLS: [(Tool, Icon, &str); 7] = [
+const TOOLS: [(Tool, Icon, &str); 8] = [
     (Tool::Pen, Icon::Pen, "tool-pen"),
     (Tool::Highlighter, Icon::Highlighter, "tool-highlighter"),
     (Tool::EraserStroke, Icon::EraserStroke, "tool-eraser"),
@@ -566,6 +569,7 @@ const TOOLS: [(Tool, Icon, &str); 7] = [
     (Tool::Text, Icon::Text, "tool-text"),
     (Tool::Pipette, Icon::Pipette, "tool-pipette"),
     (Tool::Instruments, Icon::Ruler, "tool-instruments"),
+    (Tool::Grafcet, Icon::Grafcet, "tool-grafcet"),
 ];
 
 fn is_eraser(tool: Tool) -> bool {
@@ -837,6 +841,69 @@ fn shapes_toggle(ui: &mut Ui, on: bool) -> egui::Response {
 
 // ---- Bulle de réglages ------------------------------------------------------------------
 
+/// Les symboles du grafcet : ceux qu'on pose d'un clic, puis ceux qu'on trace en glissant.
+const GRAFCET_POINTS: [(GrafcetKind, &str); 5] = [
+    (GrafcetKind::InitialStep, "grafcet-initial"),
+    (GrafcetKind::Step, "grafcet-step"),
+    (GrafcetKind::Transition, "grafcet-transition"),
+    (GrafcetKind::Action, "grafcet-action"),
+    (GrafcetKind::Jump, "grafcet-jump"),
+];
+const GRAFCET_LINES: [(GrafcetKind, &str); 4] = [
+    (GrafcetKind::Link, "grafcet-link"),
+    (GrafcetKind::Arrow, "grafcet-arrow"),
+    (GrafcetKind::Or, "grafcet-or"),
+    (GrafcetKind::And, "grafcet-and"),
+];
+
+fn grafcet_hint(kind: GrafcetKind) -> &'static str {
+    match kind {
+        GrafcetKind::InitialStep | GrafcetKind::Step => t("grafcet-step-hint"),
+        GrafcetKind::Transition => t("grafcet-transition-hint"),
+        GrafcetKind::Action => t("grafcet-action-hint"),
+        GrafcetKind::Jump => t("grafcet-jump-hint"),
+        GrafcetKind::Link | GrafcetKind::Arrow => t("grafcet-link-hint"),
+        GrafcetKind::Or | GrafcetKind::And => t("grafcet-bar-hint"),
+    }
+}
+
+/// Choix du symbole, sur deux rangées, avec le mode d'emploi de celui qui est choisi.
+fn grafcet_choices(ui: &mut Ui, tools: &mut ToolSettings) {
+    ui.set_width(520.0);
+    for row in [&GRAFCET_POINTS[..], &GRAFCET_LINES[..]] {
+        let labels: Vec<&str> = row.iter().map(|(_, key)| t(key)).collect();
+        let mut selected = row
+            .iter()
+            .position(|(kind, _)| *kind == tools.grafcet)
+            .unwrap_or(usize::MAX);
+        if widgets::segmented(ui, &labels, &mut selected) {
+            if let Some((kind, _)) = row.get(selected) {
+                tools.grafcet = *kind;
+            }
+        }
+    }
+    caption(ui, grafcet_hint(tools.grafcet));
+}
+
+/// Palette flottante de l'outil Grafcet, à la place de la bulle de réglages quand elle est fermée.
+fn grafcet_palette(
+    ctx: &egui::Context,
+    tools: &mut ToolSettings,
+    editor: &EditorUi,
+    dark: bool,
+    bottom: f32,
+) {
+    let (align, offset) = dock_anchor(editor, bottom);
+    egui::Area::new(egui::Id::unique("calame-grafcet"))
+        .anchor(align, offset)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            dock_frame(dark)
+                .inner_margin(10)
+                .show(ui, |ui| grafcet_choices(ui, tools));
+        });
+}
+
 /// Bulle au-dessus du dock : palette complète, sélecteur HSV, hexadécimal, épaisseur, taille de
 /// gomme, instruments. `bottom` est la distance du bas de la fenêtre au-dessus de laquelle elle
 /// s'affiche.
@@ -849,6 +916,10 @@ pub fn bubble(
 ) -> Vec<Command> {
     let mut commands = Vec::new();
     if !editor.bubble {
+        // La palette du grafcet reste à portée de main tant que l'outil est choisi.
+        if tools.tool == Tool::Grafcet {
+            grafcet_palette(ctx, tools, editor, state.dark, bottom);
+        }
         return commands;
     }
     let dark = state.dark;
@@ -902,6 +973,7 @@ pub fn tool_title(tool: Tool) -> &'static str {
         Tool::Text => t("tool-text"),
         Tool::Pipette => t("tool-pipette"),
         Tool::Instruments => t("tool-instruments"),
+        Tool::Grafcet => t("tool-grafcet"),
     }
 }
 
@@ -1119,6 +1191,10 @@ fn bubble_body(
             });
         }
         Tool::Pipette => caption(ui, t("pipette-hint")),
+        Tool::Grafcet => {
+            grafcet_choices(ui, tools);
+            colors(ui, tools, commands);
+        }
         Tool::Lasso => {
             ui.horizontal(|ui| {
                 let sel = state.has_selection;

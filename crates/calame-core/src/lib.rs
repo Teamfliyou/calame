@@ -2,6 +2,7 @@
 
 pub mod background;
 pub mod geometry;
+pub mod grafcet;
 pub mod history;
 pub mod instruments;
 pub mod item;
@@ -11,6 +12,7 @@ pub mod stroke;
 
 pub use background::{AssetId, Background};
 pub use geometry::{Color, Point2, Rect2, Similarity};
+pub use grafcet::{GrafcetKind, GrafcetSymbol};
 pub use history::History;
 pub use instruments::{
     snap, Edge, Handle, Instrument, InstrumentKind, Pose, UNITS_PER_CM, UNITS_PER_MM,

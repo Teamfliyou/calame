@@ -21,6 +21,7 @@ pub enum Icon {
     Text,
     Pipette,
     Ruler,
+    Grafcet,
     SetSquare45,
     SetSquare60,
     Protractor,
@@ -234,6 +235,10 @@ fn svg_of(icon: Icon) -> Option<(&'static str, f32)> {
         Icon::Text => ("M5 7V5h14v2 M12 5v14 M9 19h6", 1.8),
         Icon::Image => (
             "M4 5.5h16v13H4z M4 15.5l4.5-4.5 4 4 2.5-2.5 5 5 M15.5 9.5h.01",
+            1.8,
+        ),
+        Icon::Grafcet => (
+            "M7 3.5h10v6H7z M12 9.5v5 M8.5 12h7 M7 14.5h10v6H7z",
             1.8,
         ),
         Icon::Ruler => (
@@ -605,6 +610,7 @@ mod tests {
             Icon::Text,
             Icon::Image,
             Icon::Ruler,
+            Icon::Grafcet,
             Icon::Shapes,
             Icon::Undo,
             Icon::Redo,

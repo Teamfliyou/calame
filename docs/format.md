@@ -38,7 +38,8 @@ limite. Mettre un élément à la corbeille marque tout son sous-arbre ; le rest
 Une page sans ligne dans `page_data` est une page vide. Le modèle sérialisé est `calame_core::Page` : une liste d'éléments, soit un trait (pinceau, couleur,
 épaisseur, points avec pression et inclinaison), soit une zone de texte (position, texte, corps,
 couleur, angle, dimensions mesurées), soit une image (identifiant dans `assets`, position, dimensions,
-angle). Les pages au format 1 sont converties à la lecture et réécrites au format 2 au prochain
+angle), soit un symbole de grafcet (depuis la version 1.3 : genre, positions, texte, couleur,
+échelle). Une version antérieure ne peut pas ouvrir une page qui en contient. Les pages au format 1 sont converties à la lecture et réécrites au format 2 au prochain
 enregistrement.
 
 ## Table `settings` : les réglages

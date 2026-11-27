@@ -42,6 +42,13 @@ jobs:
         run: |
           $env:PATH += ";C:\Program Files (x86)\Inno Setup 6"
           .\scripts\package-windows.ps1
+      - name: Signer l'installeur (mise à jour automatique)
+        if: steps.exists.outputs.done != 'true'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: .\scripts\sign-update.ps1
       - name: Publier
         if: steps.exists.outputs.done != 'true'
         uses: softprops/action-gh-release@v2
@@ -51,4 +58,5 @@ jobs:
           files: |
             dist/*.zip
             dist/*-setup.exe
+            dist/latest.json
           generate_release_notes: true

@@ -8,7 +8,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use calame_core::background::PAGE_WIDTH;
-use calame_core::{AssetId, Background, BrushKind, Item, NodeId, Page, Point2, UNITS_PER_MM};
+use calame_core::grafcet::{Anchor, Prim};
+use calame_core::{
+    AssetId, Background, BrushKind, GrafcetSymbol, Item, NodeId, Page, Point2, UNITS_PER_MM,
+};
 use calame_storage::Store;
 use egui::{pos2, vec2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke};
 
@@ -92,6 +95,7 @@ impl Thumb {
                     asset: image.asset,
                     corners: image.corners(),
                 }),
+                Item::Grafcet(g) => grafcet_thumb(g, &mut strokes, &mut texts),
             }
         }
         Self {
@@ -106,6 +110,63 @@ impl Thumb {
     /// Largeur de page montrée : la page A4, ou l'image de fond si elle est plus large.
     fn width(&self) -> f32 {
         self.image_size.map_or(PAGE_WIDTH, |(w, _)| w.max(1.0))
+    }
+}
+
+/// Un symbole de grafcet, ramené aux traits et aux textes de la miniature.
+fn grafcet_thumb(
+    symbol: &GrafcetSymbol,
+    strokes: &mut Vec<ThumbStroke>,
+    texts: &mut Vec<ThumbText>,
+) {
+    let c = symbol.color;
+    let color = Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a);
+    for prim in symbol.prims() {
+        let (points, width) = match prim {
+            Prim::Line { a, b, width } => (vec![a, b], width),
+            Prim::Rect { min, max, width } => (
+                vec![
+                    min,
+                    Point2::new(max.x, min.y),
+                    max,
+                    Point2::new(min.x, max.y),
+                    min,
+                ],
+                width,
+            ),
+            Prim::Filled { min, max } => {
+                let y = (min.y + max.y) / 2.0;
+                (
+                    vec![Point2::new(min.x, y), Point2::new(max.x, y)],
+                    max.y - min.y,
+                )
+            }
+            Prim::Text {
+                at,
+                anchor,
+                text,
+                size,
+                width,
+                height,
+            } => {
+                let left = match anchor {
+                    Anchor::Center => at.x - width / 2.0,
+                    Anchor::LeftMiddle => at.x,
+                };
+                texts.push(ThumbText {
+                    pos: Point2::new(left, at.y - height / 2.0),
+                    text,
+                    size,
+                    color,
+                });
+                continue;
+            }
+        };
+        strokes.push(ThumbStroke {
+            points,
+            color,
+            width,
+        });
     }
 }
 

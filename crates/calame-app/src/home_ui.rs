@@ -365,6 +365,10 @@ fn sidebar(ui: &mut Ui, state: &mut HomeState, data: &HomeData<'_>, actions: &mu
                     commands.push(Command::OpenShortcuts);
                     ui.close();
                 }
+                if ui.button(t("check-updates")).clicked() {
+                    commands.push(Command::CheckUpdates);
+                    ui.close();
+                }
                 actions.extend(commands.into_iter().map(Action::Command));
             });
             let (icon, key) = if dark {

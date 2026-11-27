@@ -1,13 +1,14 @@
-//! Canevas vectoriel : zoom, déplacement, outils de dessin, gommes, lasso, texte et pipette.
+//! Canevas vectoriel : zoom, déplacement, outils de dessin, gommes, lasso, texte, grafcet et pipette.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use calame_core::background::{paper_rect, PAGE_HEIGHT, PAGE_WIDTH};
+use calame_core::grafcet::{self, Anchor, Prim};
 use calame_core::{
-    snap, AssetId, Background, BrushKind, Color, Edge, Handle, History, ImageBox, Instrument,
-    InstrumentKind, Item, Page, Point2, Rect2, Similarity, Stroke, StrokePoint, TextBox,
-    UNITS_PER_MM,
+    snap, AssetId, Background, BrushKind, Color, Edge, GrafcetKind, GrafcetSymbol, Handle, History,
+    ImageBox, Instrument, InstrumentKind, Item, Page, Point2, Rect2, Similarity, Stroke,
+    StrokePoint, TextBox, UNITS_PER_MM,
 };
 use calame_shapes::{recognize_stroke, Recognized, ShapeKind};
 use egui::epaint::{TextShape, Vertex};
@@ -96,6 +97,13 @@ enum Gesture {
         points: Vec<Point2>,
         source: Source,
     },
+    /// Liaison ou divergence de grafcet en cours de tracé.
+    GrafcetLine {
+        kind: GrafcetKind,
+        from: Point2,
+        to: Point2,
+        source: Source,
+    },
     Transform {
         op: TransformOp,
         current: Similarity,
@@ -111,6 +119,7 @@ impl Gesture {
             | Self::EraseStroke { source, .. }
             | Self::EraseArea { source, .. }
             | Self::Lasso { source, .. }
+            | Self::GrafcetLine { source, .. }
             | Self::Instrument { source, .. }
             | Self::Transform { source, .. } => Some(*source),
         }
@@ -128,6 +137,23 @@ struct TextEdit {
     angle: f32,
     /// Vrai avant la première image, pour donner le focus au champ.
     fresh: bool,
+    /// `Some` si l'on saisit le texte d'un symbole de grafcet, déjà posé sur la page.
+    symbol: Option<GrafcetSymbol>,
+}
+
+impl TextEdit {
+    fn for_symbol(symbol: GrafcetSymbol) -> Self {
+        Self {
+            id: Some(symbol.id),
+            pos: symbol.text_origin(),
+            text: symbol.text.clone(),
+            font_size: symbol.font_size * symbol.scale,
+            color: symbol.color,
+            angle: 0.0,
+            fresh: true,
+            symbol: Some(symbol),
+        }
+    }
 }
 
 enum Event {
@@ -638,11 +664,15 @@ impl Canvas {
 
     fn on_down(&mut self, source: Source, pos: Pos2, pressure: f32, origin: Pos2, cx: &mut Cx<'_>) {
         // Toucher la page valide un texte en cours de saisie.
+        let typing_symbol = self.text_edit.as_ref().is_some_and(|e| e.symbol.is_some());
         self.commit_text(cx);
         let p = self.view.to_page(origin, pos);
         // En mode A4, on n'écrit pas sur le bureau, hors de la feuille.
         if !cx.tools.infinite_page
-            && matches!(cx.tools.tool, Tool::Pen | Tool::Highlighter | Tool::Text)
+            && matches!(
+                cx.tools.tool,
+                Tool::Pen | Tool::Highlighter | Tool::Text | Tool::Grafcet
+            )
         {
             let sheet = self.base_sheet;
             if p.x < sheet.min.x || p.x > sheet.max.x || p.y < sheet.min.y || p.y > sheet.max.y {
@@ -694,6 +724,13 @@ impl Canvas {
             Tool::Text => {
                 self.selection.clear();
                 self.text_down(p, cx);
+            }
+            Tool::Grafcet => {
+                self.selection.clear();
+                // Le clic qui valide une saisie ne pose pas un nouveau symbole.
+                if !typing_symbol {
+                    self.grafcet_down(source, p, cx);
+                }
             }
             Tool::Pipette => {
                 let reach = 4.0 / self.view.zoom;
@@ -792,6 +829,41 @@ impl Canvas {
         };
     }
 
+    /// Symbole à texte sous `p` : un clic dessus modifie son texte.
+    fn symbol_at(&self, page: &Page, p: Point2) -> Option<GrafcetSymbol> {
+        let reach = 2.0 / self.view.zoom;
+        page.items.iter().rev().find_map(|item| match item {
+            Item::Grafcet(g) if g.kind.has_text() && item.hit(p, reach) => Some(g.clone()),
+            _ => None,
+        })
+    }
+
+    fn grafcet_down(&mut self, source: Source, p: Point2, cx: &mut Cx<'_>) {
+        let kind = cx.tools.grafcet;
+        if !kind.is_point() {
+            self.gesture = Gesture::GrafcetLine {
+                kind,
+                from: p,
+                to: p,
+                source,
+            };
+            return;
+        }
+        if let Some(existing) = self.symbol_at(cx.page, p) {
+            self.text_edit = Some(TextEdit::for_symbol(existing));
+            return;
+        }
+        let mut symbols = grafcet::place(kind, p, &cx.page.items, cx.tools.color);
+        for symbol in &mut symbols {
+            measure_symbol(cx.painter, symbol);
+        }
+        // Réceptivité, action et renvoi se saisissent aussitôt ; une étape est déjà numérotée.
+        let typed = symbols.last().filter(|s| !s.kind.is_step()).cloned();
+        cx.history
+            .add_items(cx.page, symbols.into_iter().map(Item::Grafcet).collect());
+        self.text_edit = typed.map(TextEdit::for_symbol);
+    }
+
     fn text_down(&mut self, p: Point2, cx: &mut Cx<'_>) {
         let reach = 2.0 / self.view.zoom;
         let existing = cx.page.items.iter().rev().find_map(|item| match item {
@@ -807,6 +879,7 @@ impl Canvas {
                 color: t.color,
                 angle: t.angle,
                 fresh: true,
+                symbol: None,
             },
             None => TextEdit {
                 id: None,
@@ -816,6 +889,7 @@ impl Canvas {
                 color: cx.tools.color,
                 angle: 0.0,
                 fresh: true,
+                symbol: None,
             },
         });
     }
@@ -900,6 +974,7 @@ impl Canvas {
                 }
                 *last = p;
             }
+            Gesture::GrafcetLine { to, .. } => *to = p,
             Gesture::Lasso { points, .. } => {
                 if points
                     .last()
@@ -929,6 +1004,12 @@ impl Canvas {
     fn on_up(&mut self, cx: &mut Cx<'_>) {
         match std::mem::replace(&mut self.gesture, Gesture::None) {
             Gesture::None | Gesture::Instrument { .. } => {}
+            Gesture::GrafcetLine { kind, from, to, .. } => {
+                let line = grafcet::line_symbol(kind, from, to, &cx.page.items, cx.tools.color);
+                if let Some(line) = line {
+                    cx.history.add_item(cx.page, Item::Grafcet(line));
+                }
+            }
             Gesture::Draw {
                 stroke,
                 lock,
@@ -972,14 +1053,12 @@ impl Canvas {
                     .filter(|i| i.inside_polygon(&points))
                     .map(Item::id)
                     .collect();
-                // Un clic sur une image la sélectionne : entourer une grande image serait pénible.
+                // Un clic sur une image ou un symbole de grafcet le sélectionne : les entourer
+                // serait pénible.
                 if let (true, Some(start)) = (self.selection.is_empty(), points.first()) {
-                    let touched = cx
-                        .page
-                        .items
-                        .iter()
-                        .rev()
-                        .find(|i| matches!(i, Item::Image(_)) && i.hit(*start, 0.0));
+                    let touched = cx.page.items.iter().rev().find(|i| {
+                        matches!(i, Item::Image(_) | Item::Grafcet(_)) && i.hit(*start, 0.0)
+                    });
                     self.selection.extend(touched.map(Item::id));
                 }
             }
@@ -1004,6 +1083,18 @@ impl Canvas {
         let Some(edit) = self.text_edit.take() else {
             return;
         };
+        if let Some(mut symbol) = edit.symbol {
+            // Un symbole garde sa place même sans texte.
+            symbol.set_text(edit.text.trim().to_owned());
+            measure_symbol(cx.painter, &mut symbol);
+            let id = symbol.id;
+            let item = Item::Grafcet(symbol);
+            if cx.page.item(id).is_some_and(|old| *old != item) {
+                cx.history
+                    .replace_items(cx.page, HashMap::from([(id, vec![item])]));
+            }
+            return;
+        }
         let empty = edit.text.trim().is_empty();
         match (edit.id, empty) {
             (None, true) => {}
@@ -1050,14 +1141,18 @@ impl Canvas {
             .fixed_pos(screen)
             .order(egui::Order::Foreground)
             .show(ui.ctx(), |ui| {
-                let response = ui.add(
-                    egui::TextEdit::multiline(&mut edit.text)
-                        .font(font)
-                        .text_color(color)
+                // Dans un grafcet, Entrée valide : le champ n'a qu'une ligne.
+                let field = match &edit.symbol {
+                    Some(symbol) => {
+                        let width = if symbol.kind.is_step() { 32.0 } else { 130.0 };
+                        egui::TextEdit::singleline(&mut edit.text).desired_width(width)
+                    }
+                    None => egui::TextEdit::multiline(&mut edit.text)
                         .desired_rows(1)
                         .desired_width(120.0)
                         .lock_focus(true),
-                );
+                };
+                let response = ui.add(field.font(font).text_color(color));
                 if edit.fresh {
                     response.request_focus();
                     edit.fresh = false;
@@ -1118,6 +1213,12 @@ impl Canvas {
         for item in &cx.page.items {
             let id = item.id();
             if Some(id) == editing {
+                // Le symbole reste visible autour du champ qui remplace son texte.
+                if let Item::Grafcet(g) = item {
+                    let mut blank = g.clone();
+                    blank.text.clear();
+                    paint_grafcet(painter, &blank, view, origin, 1.0, dark);
+                }
                 continue;
             }
             if let Gesture::EraseArea { pieces, .. } = &self.gesture {
@@ -1189,6 +1290,7 @@ impl Canvas {
             }
             _ => {}
         }
+        self.paint_grafcet_preview(response, cx, view, origin, dark);
         self.paint_notice(ui, painter, rect);
         self.paint_selection(ui, painter, cx.page, transform, view, origin);
         if matches!(cx.tools.tool, Tool::EraserStroke | Tool::EraserArea) {
@@ -1199,6 +1301,42 @@ impl Canvas {
                     egui::Stroke::new(1.5, theme::label_secondary(dark)),
                 );
             }
+        }
+    }
+
+    /// Aperçu pâle de ce que le prochain clic (ou le tracé en cours) ajouterait au grafcet.
+    fn paint_grafcet_preview(
+        &self,
+        response: &egui::Response,
+        cx: &Cx<'_>,
+        view: View,
+        origin: Pos2,
+        dark: bool,
+    ) {
+        if cx.tools.tool != Tool::Grafcet || self.text_edit.is_some() {
+            return;
+        }
+        let symbols = match &self.gesture {
+            Gesture::GrafcetLine { kind, from, to, .. } => {
+                grafcet::line_symbol(*kind, *from, *to, &cx.page.items, cx.tools.color)
+                    .into_iter()
+                    .collect()
+            }
+            Gesture::None if cx.tools.grafcet.is_point() => {
+                let Some(hover) = response.hover_pos() else {
+                    return;
+                };
+                let p = view.to_page(origin, hover);
+                if self.symbol_at(cx.page, p).is_some() {
+                    return;
+                }
+                grafcet::place(cx.tools.grafcet, p, &cx.page.items, cx.tools.color)
+            }
+            _ => return,
+        };
+        for mut symbol in symbols {
+            measure_symbol(cx.painter, &mut symbol);
+            paint_grafcet(cx.painter, &symbol, view, origin, 0.4, dark);
         }
     }
 
@@ -1538,6 +1676,7 @@ fn paint_item(
                 }
             }
         }
+        Item::Grafcet(g) => paint_grafcet(painter, g, view, origin, opacity, dark),
         Item::Text(t) => {
             let color = ink(t.color, dark).gamma_multiply(opacity);
             let galley = painter.layout(
@@ -1549,6 +1688,64 @@ fn paint_item(
             painter.add(
                 TextShape::new(view.to_screen(origin, t.pos), galley, color).with_angle(t.angle),
             );
+        }
+    }
+}
+
+/// Mesure le texte d'un symbole avec la police de l'écran.
+fn measure_symbol(painter: &Painter, symbol: &mut GrafcetSymbol) {
+    let galley = painter.layout_no_wrap(
+        symbol.text.clone(),
+        FontId::proportional((symbol.font_size * symbol.scale).max(1.0)),
+        Color32::BLACK,
+    );
+    symbol.text_width = galley.size().x;
+    symbol.text_height = galley.size().y;
+}
+
+fn paint_grafcet(
+    painter: &Painter,
+    symbol: &GrafcetSymbol,
+    view: View,
+    origin: Pos2,
+    opacity: f32,
+    dark: bool,
+) {
+    let color = ink(symbol.color, dark).gamma_multiply(opacity);
+    let screen = |p: Point2| view.to_screen(origin, p);
+    let stroke = |width: f32| egui::Stroke::new(width * view.zoom, color);
+    for prim in symbol.prims() {
+        match prim {
+            Prim::Line { a, b, width } => {
+                painter.line_segment([screen(a), screen(b)], stroke(width));
+            }
+            Prim::Rect { min, max, width } => {
+                painter.rect_stroke(
+                    Rect::from_min_max(screen(min), screen(max)),
+                    0.0,
+                    stroke(width),
+                    egui::StrokeKind::Middle,
+                );
+            }
+            Prim::Filled { min, max } => {
+                painter.rect_filled(Rect::from_min_max(screen(min), screen(max)), 0.0, color);
+            }
+            Prim::Text {
+                at,
+                anchor,
+                text,
+                size,
+                ..
+            } => {
+                let font = FontId::proportional((size * view.zoom).max(1.0));
+                let galley = painter.layout_no_wrap(text, font, color);
+                let half = galley.size() / 2.0;
+                let offset = match anchor {
+                    Anchor::Center => half,
+                    Anchor::LeftMiddle => Vec2::new(0.0, half.y),
+                };
+                painter.galley(screen(at) - offset, galley, color);
+            }
         }
     }
 }
