@@ -54,10 +54,11 @@ Filename: "{app}\Calame.exe"; Description: "Lancer Calame"; Flags: nowait postin
 ; Mise à jour lancée par l'application : elle est rouverte à la fin.
 Filename: "{app}\Calame.exe"; Flags: nowait; Check: Relaunch
 
+; Les notes (%APPDATA%\calame) ne sont volontairement pas supprimées à la désinstallation.
+
+; [Code] reste en dernier : la suite est du Pascal, où « ; » ne commente plus.
 [Code]
 function Relaunch: Boolean;
 begin
   Result := WizardSilent and (Pos('/RELAUNCH', Uppercase(GetCmdTail)) > 0);
 end;
-
-; Les notes (%APPDATA%\calame) ne sont volontairement pas supprimées à la désinstallation.
